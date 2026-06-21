@@ -20,6 +20,14 @@ public final class InputValidator {
     private static final Pattern MODRINTH_ID =
             Pattern.compile("^[A-Za-z0-9]{8}$");
 
+    /** Modrinth slugs: lowercase letters, digits, hyphens, underscores, 1-64 chars. */
+    private static final Pattern MODRINTH_SLUG =
+            Pattern.compile("^[a-z0-9_\\-]{1,64}$");
+
+    /** Modrinth slug OR 8-char ID combined pattern. */
+    private static final Pattern MODRINTH_SLUG_OR_ID =
+            Pattern.compile("^(?:[a-z0-9_\\-]{1,64}|[A-Za-z0-9]{8})$");
+
     /** CurseForge project IDs are purely numeric (up to 10 digits). */
     private static final Pattern CURSEFORGE_ID =
             Pattern.compile("^[0-9]{1,10}$");
@@ -72,6 +80,14 @@ public final class InputValidator {
         if (value == null || value.isEmpty()) return ""; // optional
         if (!MODRINTH_ID.matcher(value).matches())
             throw new SecurityException("Invalid Modrinth project ID: " + value);
+        return value;
+    }
+
+    /** Accepts either an 8-char Modrinth project ID or a slug (lowercase, 1-64 chars). */
+    public static String requireModrinthSlugOrId(String value) {
+        if (value == null || value.isEmpty()) return ""; // optional
+        if (!MODRINTH_SLUG_OR_ID.matcher(value).matches())
+            throw new SecurityException("Invalid Modrinth slug or project ID: " + value);
         return value;
     }
 

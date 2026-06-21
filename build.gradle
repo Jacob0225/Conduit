@@ -53,6 +53,16 @@ java {
 
 jar {
     inputs.property "archivesName", project.base.archivesName
+
+    // Loom's splitEnvironmentSourceSets() puts client classes/resources in a
+    // separate 'client' source set. The default jar task only packages main,
+    // which silently drops the entire client half of the mod (ConduitClient,
+    // ClientManifestHandler, conduit.client.mixins.json, etc.). Without this,
+    // the published jar fails at load:
+    //   - MixinInitialisationError: conduit.client.mixins.json not in jar
+    //   - ClassNotFoundException: com.jacob0225.conduit.client.ConduitClient
+    from sourceSets.client.output
+
     from("LICENSE") {
         rename { "${it}_${inputs.properties.archivesName}" }
     }

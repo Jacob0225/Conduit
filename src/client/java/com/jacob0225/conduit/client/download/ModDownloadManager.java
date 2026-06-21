@@ -23,7 +23,7 @@ import java.util.List;
  * 1. Query Modrinth → if unavailable, query CurseForge
  * 2. Download to staging directory ({@code .minecraft/conduit-staging/})
  * 3. Verify SHA-512 hash against BOTH API-reported and server-reported hashes
- * 4. Move verified file to managed directory ({@code .minecraft/mods/conduit-managed/})
+ * 4. Move verified file to managed directory ({@code .minecraft/mods/})
  * 5. Resolve and download transitive dependencies (each also hash-verified)
  *
  * All downloads use HTTPS. Download URLs are validated to be from known CDN origins.
@@ -33,7 +33,7 @@ public class ModDownloadManager {
     private static final Logger LOGGER = LoggerFactory.getLogger("Conduit/Download");
 
     // Subdirectory of the game directory for Conduit-installed mods
-    public static final String MANAGED_DIR  = "mods/conduit-managed";
+    public static final String MANAGED_DIR  = "mods";
     // Temporary directory; cleared on startup
     public static final String STAGING_DIR  = "conduit-staging";
 
@@ -148,6 +148,15 @@ public class ModDownloadManager {
         String apiHash     = modrinthInfo != null ? modrinthInfo.sha512() : null; // CF only has SHA-1
         String filename    = modrinthInfo != null ? modrinthInfo.filename() : curseInfo.filename();
 
+        // Skip if the file is already present in the mods folder (e.g. from a
+        // previous install attempt this session). Don't re-download or delete it.
+        Path destination = managedDir.resolve(filename);
+        if (Files.exists(destination)) {
+            LOGGER.info("{} already present in mods/ — skipping download.", entry.modId());
+            listener.onComplete(entry.modId());
+            return true;
+        }
+
         Path stagingFile = stagingDir.resolve(entry.modId() + "-" + entry.requiredVersion() + ".jar.tmp");
 
         try {
@@ -181,7 +190,6 @@ public class ModDownloadManager {
         }
 
         // Step 5: Move to managed directory
-        Path destination = managedDir.resolve(filename);
         try {
             Files.move(stagingFile, destination, StandardCopyOption.REPLACE_EXISTING);
             LOGGER.info("Installed {} → {}", entry.modId(), destination.getFileName());

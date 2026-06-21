@@ -4,6 +4,7 @@ import com.jacob0225.conduit.manifest.ServerManifestProvider;
 import com.jacob0225.conduit.network.ConduitPackets;
 import com.jacob0225.conduit.network.ManifestPayload;
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.server.MinecraftServer;
@@ -19,6 +20,10 @@ import java.nio.file.Path;
  *   1. Register payload types in the common init (PayloadTypeRegistry).
  *   2. On player JOIN, send the ManifestPayload if the client supports it.
  *   3. ServerPlayNetworking.send(player, payload) — no more FriendlyByteBuf wrangling.
+ *
+ * The manifest is (re)loaded when each server starts (ServerLifecycleEvents.
+ * SERVER_STARTING) rather than lazily on first join, so the config file is
+ * generated up front and reflects edits on every restart.
  */
 public class Conduit implements ModInitializer {
 
@@ -34,9 +39,12 @@ public class Conduit implements ModInitializer {
         // Must register payload types before any send/receive calls on both sides
         ConduitPackets.registerCommon();
 
-        ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
-            ensureManifestLoaded(server);
+        // (Re)load the manifest as each server starts. Doing it here — rather than
+        // lazily on first player join — guarantees config/conduit/manifest.json is
+        // created/refreshed on every startup, including before anyone connects.
+        ServerLifecycleEvents.SERVER_STARTING.register(this::ensureManifestLoaded);
 
+        ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
             // canSend checks that the client registered the same payload type
             // (i.e. also called PayloadTypeRegistry.playS2C().register for our type)
             if (ServerPlayNetworking.canSend(handler, ManifestPayload.TYPE)) {
@@ -53,11 +61,12 @@ public class Conduit implements ModInitializer {
     // ── Private helpers ───────────────────────────────────────────────────────
 
     private void ensureManifestLoaded(MinecraftServer server) {
-        if (manifestProvider == null) {
-            Path configDir = server.getServerDirectory().resolve("config");
-            manifestProvider = new ServerManifestProvider(configDir);
-            manifestProvider.load();
-        }
+        // Refresh on every server start so edits to manifest.json are picked up.
+        Path configDir = server.getServerDirectory().resolve("config");
+        // Pass the running MC version so the resolver queries the right game version
+        String mcVersion = server.getServerVersion();
+        manifestProvider = new ServerManifestProvider(configDir, mcVersion);
+        manifestProvider.load();
     }
 
     private void sendManifest(net.minecraft.server.level.ServerPlayer player, MinecraftServer server) {

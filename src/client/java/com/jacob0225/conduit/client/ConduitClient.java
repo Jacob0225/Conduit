@@ -9,10 +9,11 @@ import org.slf4j.LoggerFactory;
 /**
  * Client-side entrypoint for Conduit.
  *
- * NOTE: ConduitPackets.registerCommon() must be called here as well as in the
- * server entrypoint. Fabric requires that PayloadTypeRegistry registrations
- * happen on both sides before the play phase begins — if the client hasn't
- * registered the type, canSend() returns false and the server won't send.
+ * NOTE: ConduitPackets.registerCommon() is normally already called for us by
+ * the 'main' entrypoint, since Fabric runs ModInitializer on both the client
+ * and the dedicated server and the PayloadTypeRegistry is global. We call it
+ * again here for safety against entrypoint-ordering surprises; the method is
+ * idempotent, so the duplicate call is a no-op (see ConduitPackets).
  */
 public class ConduitClient implements ClientModInitializer {
 
@@ -22,7 +23,7 @@ public class ConduitClient implements ClientModInitializer {
     public void onInitializeClient() {
         LOGGER.info("Conduit client initializing");
 
-        // Register payload types on the client side (mirrors server's registerCommon call)
+        // Register payload types (idempotent — already done by the main entrypoint).
         ConduitPackets.registerCommon();
 
         // Register the packet receiver
