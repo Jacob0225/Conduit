@@ -3,8 +3,7 @@
   "package": "com.jacob0225.conduit.client.mixin",
   "compatibilityLevel": "JAVA_25",
   "client": [
-    "MixinLocalPlayer",
-    "MixinClientPacketListener"
+    "MixinClientConfigurationConnectionAccess"
   ],
   "injectors": {
     "defaultRequire": 1

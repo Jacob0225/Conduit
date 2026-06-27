@@ -5,24 +5,32 @@ import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 /**
  * Registers Conduit's packet types with Fabric's PayloadTypeRegistry.
  *
- * In 26.1, every CustomPacketPayload type must be registered on BOTH sides
- * via PayloadTypeRegistry before any listener or sender is used.
+ * <p>The manifest is delivered during the <b>configuration phase</b>, not the
+ * play phase. This is essential: the server sends its registries (custom
+ * blocks, entities, etc. contributed by the server's mods) as part of the
+ * configuration handshake, which runs <i>before</i> {@code ServerPlayConnection
+ * Events.JOIN}. If we waited for JOIN — as the original code did — the client
+ * would already have received registry packets it cannot decode because the
+ * required mods are not installed yet, producing a "registry mismatch" disconnect.
  *
- * Call ConduitPackets.registerCommon() from the common (server) initializer.
+ * <p>Sending during configuration lets the client learn what it needs, install
+ * it, and only then let the registry exchange proceed.
+ *
+ * <p>Call {@link #registerCommon()} from the common (server) initializer.
  */
 public final class ConduitPackets {
 
     private ConduitPackets() {}
 
     /**
-     * Register the S2C manifest sync payload type.
+     * Register the C2S manifest sync payload type on the configuration channel.
      *
-     * The PayloadTypeRegistry is global (shared by both sides), and Fabric's
+     * <p>The PayloadTypeRegistry is global (shared by both sides), and Fabric's
      * 'main' entrypoint runs on BOTH the dedicated server and the client.
      * Registering there once is sufficient for encode (server) AND decode
      * (client) — so this method is NOT called from the client entrypoint.
      *
-     * A guard makes this idempotent in case it is ever invoked more than once.
+     * <p>A guard makes this idempotent in case it is ever invoked more than once.
      */
     private static volatile boolean registered = false;
 
@@ -30,8 +38,10 @@ public final class ConduitPackets {
         if (registered) return;
         registered = true;
 
-        // clientboundPlay = server sends, client receives (renamed in 26.1)
-        PayloadTypeRegistry.clientboundPlay().register(
+        // clientboundConfiguration = server sends during config phase, client
+        // receives during config phase. Registered on the configuration channel
+        // (not play) so the packet arrives BEFORE the server's registry sync.
+        PayloadTypeRegistry.clientboundConfiguration().register(
                 ManifestPayload.TYPE,
                 ManifestPayload.CODEC
         );

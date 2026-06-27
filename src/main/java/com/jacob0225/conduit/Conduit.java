@@ -5,9 +5,10 @@ import com.jacob0225.conduit.network.ConduitPackets;
 import com.jacob0225.conduit.network.ManifestPayload;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
-import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
-import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
+import net.fabricmc.fabric.api.networking.v1.ServerConfigurationConnectionEvents;
+import net.fabricmc.fabric.api.networking.v1.ServerConfigurationNetworking;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.network.ServerConfigurationPacketListenerImpl;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -16,14 +17,19 @@ import java.nio.file.Path;
 /**
  * Server-side (and common) entrypoint for Conduit.
  *
- * 26.1 networking pattern:
- *   1. Register payload types in the common init (PayloadTypeRegistry).
- *   2. On player JOIN, send the ManifestPayload if the client supports it.
- *   3. ServerPlayNetworking.send(player, payload) — no more FriendlyByteBuf wrangling.
+ * <p>Networking pattern (configuration phase — required so the manifest arrives
+ * <b>before</b> the server's registry sync):
+ *   <ol>
+ *     <li>Register the payload type in the common init (PayloadTypeRegistry).
+ *     <li>On {@code CONFIGURE}, if the client supports the payload, send it.
+ *         This is the earliest point a custom payload can be sent and it fires
+ *         before any registry packets, so a client missing the required mods can
+ *         install them and reconnect instead of hitting a registry error.
+ *   </ol>
  *
- * The manifest is (re)loaded when each server starts (ServerLifecycleEvents.
- * SERVER_STARTING) rather than lazily on first join, so the config file is
- * generated up front and reflects edits on every restart.
+ * <p>The manifest is (re)loaded when each server starts ({@code SERVER_STARTING})
+ * rather than lazily on first connect, so the config file is generated up front
+ * and reflects edits on every restart.
  */
 public class Conduit implements ModInitializer {
 
@@ -44,14 +50,20 @@ public class Conduit implements ModInitializer {
         // created/refreshed on every startup, including before anyone connects.
         ServerLifecycleEvents.SERVER_STARTING.register(this::ensureManifestLoaded);
 
-        ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
+        // Send the manifest during the configuration phase, before the server's
+        // registry sync. A client that lacks the required mods can then install
+        // them and reconnect, instead of crashing on undecodable registry data.
+        ServerConfigurationConnectionEvents.CONFIGURE.register((handler, server) -> {
             // canSend checks that the client registered the same payload type
-            // (i.e. also called PayloadTypeRegistry.playS2C().register for our type)
-            if (ServerPlayNetworking.canSend(handler, ManifestPayload.TYPE)) {
-                sendManifest(handler.player, server);
+            // (i.e. also has Conduit installed and registered the type).
+            if (ServerConfigurationNetworking.canSend(handler, ManifestPayload.TYPE)) {
+                sendManifest(handler, server);
             } else {
-                LOGGER.debug("Client {} does not have Conduit; skipping manifest sync.",
-                        handler.player.getName().getString());
+                // Client doesn't have Conduit at all — log and let the vanilla
+                // handshake continue. If the server's mods register custom
+                // content, vanilla's registry check will disconnect this client
+                // with a clear "mismatched registry" message.
+                LOGGER.debug("Client lacks Conduit; skipping manifest sync.");
             }
         });
 
@@ -69,15 +81,14 @@ public class Conduit implements ModInitializer {
         manifestProvider.load();
     }
 
-    private void sendManifest(net.minecraft.server.level.ServerPlayer player, MinecraftServer server) {
+    private void sendManifest(ServerConfigurationPacketListenerImpl handler, MinecraftServer server) {
         try {
             ManifestPayload payload = manifestProvider.getPayload();
-            // New 26.1 API: just pass the payload record directly
-            ServerPlayNetworking.send(player, payload);
-            LOGGER.debug("Sent manifest to {}", player.getName().getString());
+            // Configuration-phase send: payload is delivered before registry sync.
+            ServerConfigurationNetworking.send(handler, payload);
+            LOGGER.debug("Sent Conduit manifest during configuration phase.");
         } catch (Exception e) {
-            LOGGER.error("Failed to send Conduit manifest to {}: {}",
-                    player.getName().getString(), e.getMessage());
+            LOGGER.error("Failed to send Conduit manifest: {}", e.getMessage());
         }
     }
 }
