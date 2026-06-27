@@ -1,94 +1,138 @@
 package com.jacob0225.conduit;
 
+import com.jacob0225.conduit.http.ConduitHttpServer;
 import com.jacob0225.conduit.manifest.ServerManifestProvider;
-import com.jacob0225.conduit.network.ConduitPackets;
-import com.jacob0225.conduit.network.ManifestPayload;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
-import net.fabricmc.fabric.api.networking.v1.ServerConfigurationConnectionEvents;
-import net.fabricmc.fabric.api.networking.v1.ServerConfigurationNetworking;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.network.ServerConfigurationPacketListenerImpl;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.io.Reader;
+import java.io.Writer;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Properties;
 
 /**
  * Server-side (and common) entrypoint for Conduit.
  *
- * <p>Networking pattern (configuration phase — required so the manifest arrives
- * <b>before</b> the server's registry sync):
- *   <ol>
- *     <li>Register the payload type in the common init (PayloadTypeRegistry).
- *     <li>On {@code CONFIGURE}, if the client supports the payload, send it.
- *         This is the earliest point a custom payload can be sent and it fires
- *         before any registry packets, so a client missing the required mods can
- *         install them and reconnect instead of hitting a registry error.
- *   </ol>
+ * <p><b>Architecture.</b> The manifest is delivered to clients over a separate
+ * plain-HTTP endpoint, <i>not</i> via a Minecraft packet. This is deliberate:
+ * Minecraft's registry sync runs during the configuration phase, so any manifest
+ * packet sent inside the game connection would race (and lose to) the registry
+ * packets. By serving the manifest out-of-band, the client can install missing
+ * mods <b>before</b> it ever opens the game connection — eliminating the
+ * "mismatched registry" disconnect.
  *
- * <p>The manifest is (re)loaded when each server starts ({@code SERVER_STARTING})
- * rather than lazily on first connect, so the config file is generated up front
- * and reflects edits on every restart.
+ * <p>The client side intercepts {@code ConnectScreen.startConnecting} (its
+ * single join entry point), fetches the manifest from this HTTP endpoint,
+ * installs what's needed, and only then proceeds with the real connection.
+ *
+ * <p>Lifecycle: the manifest is (re)loaded and the HTTP server (re)started on
+ * every {@code SERVER_STARTING}, and both are torn down on
+ * {@code SERVER_STOPPED}. Config lives at {@code config/conduit.properties}.
  */
 public class Conduit implements ModInitializer {
 
     public static final String MOD_ID = "conduit";
     public static final Logger LOGGER = LoggerFactory.getLogger("Conduit");
 
+    /** Default manifest port = game port + 1 (e.g. 25565 → 25566). */
+    public static final int DEFAULT_PORT_OFFSET = 1;
+
+    private ConduitHttpServer httpServer;
     private ServerManifestProvider manifestProvider;
 
     @Override
     public void onInitialize() {
-        LOGGER.info("Conduit initializing");
+        LOGGER.info("Conduit initializing (HTTP manifest mode)");
 
-        // Must register payload types before any send/receive calls on both sides
-        ConduitPackets.registerCommon();
+        ServerLifecycleEvents.SERVER_STARTING.register(this::onServerStarting);
+        ServerLifecycleEvents.SERVER_STOPPED.register(this::onServerStopped);
 
-        // (Re)load the manifest as each server starts. Doing it here — rather than
-        // lazily on first player join — guarantees config/conduit/manifest.json is
-        // created/refreshed on every startup, including before anyone connects.
-        ServerLifecycleEvents.SERVER_STARTING.register(this::ensureManifestLoaded);
-
-        // Send the manifest during the configuration phase, before the server's
-        // registry sync. A client that lacks the required mods can then install
-        // them and reconnect, instead of crashing on undecodable registry data.
-        ServerConfigurationConnectionEvents.CONFIGURE.register((handler, server) -> {
-            // canSend checks that the client registered the same payload type
-            // (i.e. also has Conduit installed and registered the type).
-            if (ServerConfigurationNetworking.canSend(handler, ManifestPayload.TYPE)) {
-                sendManifest(handler, server);
-            } else {
-                // Client doesn't have Conduit at all — log and let the vanilla
-                // handshake continue. If the server's mods register custom
-                // content, vanilla's registry check will disconnect this client
-                // with a clear "mismatched registry" message.
-                LOGGER.debug("Client lacks Conduit; skipping manifest sync.");
-            }
-        });
-
-        LOGGER.info("Conduit server-side ready.");
+        LOGGER.info("Conduit server-side ready. Manifest will be served over HTTP.");
     }
 
-    // ── Private helpers ───────────────────────────────────────────────────────
+    // ── Lifecycle ────────────────────────────────────────────────────────────
 
-    private void ensureManifestLoaded(MinecraftServer server) {
-        // Refresh on every server start so edits to manifest.json are picked up.
+    private void onServerStarting(MinecraftServer server) {
         Path configDir = server.getServerDirectory().resolve("config");
-        // Pass the running MC version so the resolver queries the right game version
         String mcVersion = server.getServerVersion();
+
+        // Load the manifest so the HTTP endpoint has something to serve.
         manifestProvider = new ServerManifestProvider(configDir, mcVersion);
         manifestProvider.load();
+
+        // Determine the HTTP port: explicit override in conduit.properties, else
+        // default to (game port + 1). We read the raw game port from the server
+        // rather than assuming 25565 so non-default setups work too.
+        int gamePort = server.getPort();
+        int httpPort = resolveHttpPort(configDir, gamePort);
+
+        httpServer = new ConduitHttpServer(manifestProvider, httpPort);
+        httpServer.start();
     }
 
-    private void sendManifest(ServerConfigurationPacketListenerImpl handler, MinecraftServer server) {
+    private void onServerStopped(MinecraftServer server) {
+        if (httpServer != null) {
+            httpServer.stop();
+            httpServer = null;
+        }
+    }
+
+    // ── Config ───────────────────────────────────────────────────────────────
+
+    /**
+     * Read {@code httpPort} from {@code config/conduit.properties}. If absent or
+     * unparsable, fall back to {@code gamePort + DEFAULT_PORT_OFFSET}. The
+     * properties file is created (with a comment) on first run so operators
+     * discover the option without reading docs.
+     */
+    private int resolveHttpPort(Path configDir, int gamePort) {
+        Path propsPath = configDir.resolve("conduit.properties");
+        Properties props = new Properties();
+
+        if (Files.exists(propsPath)) {
+            try (Reader r = Files.newBufferedReader(propsPath)) {
+                props.load(r);
+            } catch (IOException e) {
+                LOGGER.warn("Could not read {}: {}", propsPath, e.getMessage());
+            }
+        } else {
+            writeDefaultProperties(propsPath, gamePort);
+        }
+
+        String raw = props.getProperty("httpPort");
+        if (raw != null && !raw.isBlank()) {
+            try {
+                int port = Integer.parseInt(raw.trim());
+                if (port > 0 && port < 65536) return port;
+                LOGGER.warn("httpPort={} out of range; using default ({}+{})",
+                        port, gamePort, DEFAULT_PORT_OFFSET);
+            } catch (NumberFormatException e) {
+                LOGGER.warn("httpPort='{}' is not an integer; using default ({}+{})",
+                        raw, gamePort, DEFAULT_PORT_OFFSET);
+            }
+        }
+        return gamePort + DEFAULT_PORT_OFFSET;
+    }
+
+    private void writeDefaultProperties(Path propsPath, int gamePort) {
         try {
-            ManifestPayload payload = manifestProvider.getPayload();
-            // Configuration-phase send: payload is delivered before registry sync.
-            ServerConfigurationNetworking.send(handler, payload);
-            LOGGER.debug("Sent Conduit manifest during configuration phase.");
-        } catch (Exception e) {
-            LOGGER.error("Failed to send Conduit manifest: {}", e.getMessage());
+            Files.createDirectories(propsPath.getParent());
+            try (Writer w = Files.newBufferedWriter(propsPath)) {
+                // Properties.store would work, but a hand-written header reads
+                // better when an operator opens it cold.
+                w.write("# Conduit configuration\n");
+                w.write("# Port for the HTTP manifest endpoint. Empty = auto (game port + 1 = "
+                        + (gamePort + DEFAULT_PORT_OFFSET) + ").\n");
+                w.write("httpPort=\n");
+            }
+            LOGGER.info("Wrote default config to {}", propsPath);
+        } catch (IOException e) {
+            LOGGER.warn("Could not write {}: {}", propsPath, e.getMessage());
         }
     }
 }

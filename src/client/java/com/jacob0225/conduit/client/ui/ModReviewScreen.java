@@ -1,17 +1,14 @@
 package com.jacob0225.conduit.client.ui;
 
-import com.jacob0225.conduit.client.network.ClientManifestHandler;
 import com.jacob0225.conduit.client.download.*;
+import com.jacob0225.conduit.client.network.ConduitJoinInterceptor;
 import com.jacob0225.conduit.manifest.ModEntry;
 import com.jacob0225.conduit.network.ManifestPayload;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
-import net.minecraft.client.gui.screens.ConnectScreen;
 import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.client.multiplayer.ServerData;
-import net.minecraft.client.multiplayer.TransferState;
 import net.minecraft.client.multiplayer.resolver.ServerAddress;
 import net.minecraft.network.chat.Component;
 import org.slf4j.Logger;
@@ -19,26 +16,22 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * Standalone install screen shown over the title menu after the client
- * disconnects from a server whose manifest it didn't satisfy.
+ * Install screen shown when a join is intercepted and the client is missing
+ * required mods. Runs the existing download pipeline, then offers to reconnect.
  *
- * <p>This is NOT an in-game overlay — the player has already been disconnected
- * (mods cannot be hot-loaded onto a live connection). The screen runs the
- * existing download pipeline, then offers to reconnect to the server whose
- * address was captured before disconnect.
+ * <p>Unlike the prior config-phase version, the player has NOT joined yet —
+ * this screen appears instead of the connect. On success, "Reconnect" re-issues
+ * the join via {@code ConnectScreen.startConnecting} with the bypass flag set
+ * so the interceptor lets it through.
  *
- * <p>Phase 1 — PROMPT:     "Server requires X mods. Download them?"
- * Phase 2 — DOWNLOADING:   per-mod progress list, buttons disabled
- * Phase 3 — DONE:          "Installed!" + Reconnect / Back to menu buttons
- * Phase 4 — ERROR:         "Some mods failed" + Retry / Back to menu buttons
- *
- * <p>Reconnect uses {@link ConnectScreen#startConnecting} with the captured
- * {@link ServerAddress}. If no address was captured (e.g. server transfer),
- * Reconnect is hidden and only "Back to menu" is offered.
+ * <p>Phases:
+ *   PROMPT     — "Server requires N mods. Download?"
+ *   DOWNLOADING — per-mod progress list, buttons disabled
+ *   DONE        — "Installed!" + Reconnect / Back
+ *   ERROR       — "Some mods failed" + Retry / Back
  */
 public class ModReviewScreen extends Screen {
 
@@ -51,7 +44,6 @@ public class ModReviewScreen extends Screen {
     private static final int COL_RED     = 0xFFFF5555;
     private static final int COL_PENDING = 0xFFAAAAAA;
 
-    // Solid dark background — no game world behind this screen anymore.
     private static final int PANEL_COLOR = 0xCC000000;
 
     private enum Phase { PROMPT, DOWNLOADING, DONE, ERROR }
@@ -60,20 +52,29 @@ public class ModReviewScreen extends Screen {
     private final ManifestPayload payload;
     private final ManifestVerifier.DiffResult diff;
 
+    /** Captured at intercept time so Reconnect can re-issue the exact join. */
+    private final ServerAddress serverAddress;
+    private final ServerData    serverData;
+    private final Screen        parent;
+
     private final List<ModEntry> modList;
     private final List<String>   modStatus;
     private final List<Integer>  modColor;
 
-    private Button primaryButton;   // Yes / (hidden during download) / Reconnect / Retry
+    private Button primaryButton;   // Yes / (hidden) / Reconnect / Retry
     private Button secondaryButton; // Cancel / Back
 
     private String footerText  = "";
     private int    footerColor = COL_WHITE;
 
-    public ModReviewScreen(ManifestPayload payload, ManifestVerifier.DiffResult diff) {
+    public ModReviewScreen(ManifestPayload payload, ManifestVerifier.DiffResult diff,
+                           ServerAddress address, ServerData serverData, Screen parent) {
         super(Component.literal("Conduit — Mod Sync"));
-        this.payload = payload;
-        this.diff    = diff;
+        this.payload       = payload;
+        this.diff          = diff;
+        this.serverAddress = address;
+        this.serverData    = serverData;
+        this.parent        = parent;
 
         modList   = diff.allNeeded();
         modStatus = new ArrayList<>();
@@ -89,9 +90,9 @@ public class ModReviewScreen extends Screen {
         int cx = this.width / 2;
         int by = this.height - 36;
 
-        // The primary button's action depends on the current phase: download on
-        // PROMPT, reconnect on DONE, retry on ERROR. The lambda dispatches rather
-        // than being re-bound, so changing the label is enough to change behavior.
+        // Primary button action is phase-dependent: download on PROMPT, reconnect
+        // on DONE, retry on ERROR. Dispatching inside the lambda means we only
+        // change the label to change behavior — no re-binding needed.
         primaryButton = Button.builder(
                 Component.literal("Yes, Download"),
                 btn -> {
@@ -105,7 +106,7 @@ public class ModReviewScreen extends Screen {
 
         secondaryButton = Button.builder(
                 Component.literal("Cancel"),
-                btn -> backToMenu()
+                btn -> backToParent()
         ).bounds(cx + 6, by, 100, 20).build();
 
         addRenderableWidget(primaryButton);
@@ -114,7 +115,6 @@ public class ModReviewScreen extends Screen {
         applyPhaseButtons();
     }
 
-    /** Toggle button labels/visibility based on the current phase. */
     private void applyPhaseButtons() {
         switch (phase) {
             case PROMPT -> {
@@ -128,27 +128,20 @@ public class ModReviewScreen extends Screen {
                 primaryButton.visible = false;
                 primaryButton.active = false;
                 secondaryButton.setMessage(Component.literal("Cancel"));
-                secondaryButton.active = false; // no mid-download cancel (atomic install)
+                secondaryButton.active = false; // atomic install — no mid-download cancel
             }
             case DONE -> {
-                // Reconnect is only available if we captured an address.
-                Optional<ServerAddress> addr = ClientManifestHandler.getPendingServerAddress();
-                if (addr.isPresent()) {
-                    primaryButton.setMessage(Component.literal("Reconnect"));
-                    primaryButton.visible = true;
-                    primaryButton.active = true;
-                } else {
-                    primaryButton.visible = false;
-                    primaryButton.active = false;
-                }
-                secondaryButton.setMessage(Component.literal("Back to Menu"));
+                primaryButton.setMessage(Component.literal("Reconnect"));
+                primaryButton.visible = true;
+                primaryButton.active = true;
+                secondaryButton.setMessage(Component.literal("Back"));
                 secondaryButton.active = true;
             }
             case ERROR -> {
                 primaryButton.setMessage(Component.literal("Retry"));
                 primaryButton.visible = true;
                 primaryButton.active = true;
-                secondaryButton.setMessage(Component.literal("Back to Menu"));
+                secondaryButton.setMessage(Component.literal("Back"));
                 secondaryButton.active = true;
             }
         }
@@ -156,16 +149,12 @@ public class ModReviewScreen extends Screen {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor g, int mx, int my, float delta) {
-        // Full-screen dark background since there's no game world behind us.
         g.fill(0, 0, this.width, this.height, PANEL_COLOR);
 
         int cx = this.width / 2;
 
-        if (phase == Phase.PROMPT) {
-            renderPrompt(g, cx);
-        } else {
-            renderProgress(g, cx);
-        }
+        if (phase == Phase.PROMPT) renderPrompt(g, cx);
+        else                       renderProgress(g, cx);
 
         if (!footerText.isEmpty()) {
             drawCentered(g, footerText, cx, this.height - 56, footerColor);
@@ -174,13 +163,11 @@ public class ModReviewScreen extends Screen {
         super.extractRenderState(g, mx, my, delta);
     }
 
-    /** Closing this screen goes to the title menu, not whatever was behind it. */
     @Override
     public void onClose() {
-        backToMenu();
+        backToParent();
     }
 
-    /** Never close on ESC during download — the install must complete or fail. */
     @Override
     public boolean shouldCloseOnEsc() {
         return phase != Phase.DOWNLOADING;
@@ -201,13 +188,14 @@ public class ModReviewScreen extends Screen {
         drawCentered(g, line2, cx, y, COL_GREY);
         y += 14;
 
-        drawCentered(g, "You'll be disconnected while they download.", cx, y, COL_YELLOW);
+        drawCentered(g, "Conduit will download them before you join.", cx, y, COL_YELLOW);
         y += 12;
-        drawCentered(g, "Conduit will reconnect you automatically.", cx, y, COL_YELLOW);
+        drawCentered(g, "You'll connect automatically once installed.", cx, y, COL_YELLOW);
     }
 
     private void renderProgress(GuiGraphicsExtractor g, int cx) {
-        drawCentered(g, "§lInstalling mods for " + payload.serverName(), cx, this.height / 2 - 80, COL_WHITE);
+        drawCentered(g, "§lInstalling mods for " + payload.serverName(),
+                cx, this.height / 2 - 80, COL_WHITE);
 
         int listTop    = this.height / 2 - 60;
         int listBottom = this.height - 64;
@@ -245,7 +233,6 @@ public class ModReviewScreen extends Screen {
         phase = Phase.DOWNLOADING;
         applyPhaseButtons();
         footerText = "";
-        // Reset per-mod status for retry runs.
         for (int i = 0; i < modStatus.size(); i++) {
             modStatus.set(i, "Pending");
             modColor.set(i, COL_PENDING);
@@ -284,7 +271,7 @@ public class ModReviewScreen extends Screen {
                 minecraft.execute(() -> {
                     if (result.failed().isEmpty()) {
                         phase = Phase.DONE;
-                        footerText  = "§aAll mods installed. Click Reconnect to rejoin.";
+                        footerText  = "§aAll mods installed. Click Reconnect to join.";
                         footerColor = COL_GREEN;
                     } else {
                         phase = Phase.ERROR;
@@ -306,39 +293,31 @@ public class ModReviewScreen extends Screen {
         });
     }
 
-    /** Reconnect to the captured server address using the vanilla connect flow. */
+    /**
+     * Re-issue the join that was intercepted. The bypass flag is set first so
+     * the interceptor lets this call straight through without re-checking.
+     */
     private void reconnect() {
-        Optional<ServerAddress> addrOpt = ClientManifestHandler.getPendingServerAddress();
-        if (addrOpt.isEmpty()) {
-            LOGGER.warn("Reconnect requested but no server address was captured.");
-            backToMenu();
+        if (serverAddress == null) {
+            LOGGER.warn("Reconnect requested but no server address is available.");
+            backToParent();
             return;
         }
-        ServerAddress addr = addrOpt.get();
-        String name = ClientManifestHandler.getPendingServerName().orElse(payload.serverName());
-
-        // Build a fresh ServerData so ConnectScreen has what it needs.
-        // Type.OTHER covers normal multiplayer and direct connect.
-        ServerData data = new ServerData(name, addr.getHost() + ":" + addr.getPort(),
-                ServerData.Type.OTHER);
-
-        LOGGER.info("Reconnecting to {} ({})", name, addr);
-        ConnectScreen.startConnecting(
-                this,                 // parent screen to return to on failure
-                minecraft,            // the Minecraft instance
-                addr,                 // resolved server address
-                data,                 // server metadata
-                false,                // direct connect? false -> uses normal connect path
-                new TransferState(    // transfer state (empty; fresh connection)
-                        java.util.Map.of(),
-                        java.util.Map.of(),
-                        false)
+        LOGGER.info("Reconnecting to {} after Conduit install", serverAddress);
+        ConduitJoinInterceptor.bypassNextCheck();
+        net.minecraft.client.gui.screens.ConnectScreen.startConnecting(
+                parent != null ? parent : this,
+                minecraft,
+                serverAddress,
+                serverData,
+                false,
+                new net.minecraft.client.multiplayer.TransferState(
+                        java.util.Map.of(), java.util.Map.of(), false)
         );
     }
 
-    private void backToMenu() {
-        ClientManifestHandler.clearPending();
-        minecraft.setScreen(new TitleScreen());
+    private void backToParent() {
+        minecraft.setScreen(parent);
     }
 
     private void setStatus(String modId, String status, int color) {

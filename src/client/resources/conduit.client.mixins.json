@@ -3,7 +3,7 @@
   "package": "com.jacob0225.conduit.client.mixin",
   "compatibilityLevel": "JAVA_25",
   "client": [
-    "MixinClientConfigurationConnectionAccess"
+    "MixinConnectScreen"
   ],
   "injectors": {
     "defaultRequire": 1
