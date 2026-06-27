@@ -7,6 +7,8 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.client.multiplayer.TransferState;
 import net.minecraft.client.multiplayer.resolver.ServerAddress;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -32,6 +34,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(ConnectScreen.class)
 public class MixinConnectScreen {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger("Conduit/Mixin");
+
     @Inject(method = "startConnecting", at = @At("HEAD"), cancellable = true)
     private static void conduit$interceptJoin(
             Screen parent,
@@ -42,12 +46,18 @@ public class MixinConnectScreen {
             TransferState transferState,
             CallbackInfo ci
     ) {
+        LOGGER.info("⟶ startConnecting fired: {}:{} (direct={}, serverData={})",
+                address.getHost(), address.getPort(), direct,
+                serverData == null ? "null" : "present");
+
         // Bypass the check for the re-join that follows a successful install.
         if (ConduitJoinInterceptor.shouldBypass()) {
+            LOGGER.info("⟶ bypass flag set — letting vanilla connect proceed (no manifest check)");
             return; // let vanilla proceed
         }
 
         // Cancel the vanilla connect; we'll re-issue it once mods are verified.
+        LOGGER.info("⟶ cancelling vanilla connect, handing off to ConduitJoinInterceptor");
         ci.cancel();
 
         // Build the "real connect" as a Runnable. When the manifest check passes

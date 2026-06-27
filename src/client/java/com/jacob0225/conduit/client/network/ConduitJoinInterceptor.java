@@ -4,6 +4,7 @@ import com.jacob0225.conduit.client.download.InstalledModIndex;
 import com.jacob0225.conduit.client.download.ManifestVerifier;
 import com.jacob0225.conduit.client.http.ManifestHttpClient;
 import com.jacob0225.conduit.client.ui.ModReviewScreen;
+import com.jacob0225.conduit.manifest.ModEntry;
 import com.jacob0225.conduit.network.ManifestPayload;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
@@ -74,7 +75,10 @@ public final class ConduitJoinInterceptor {
         String host = address.getHost();
         int gamePort = address.getPort();
 
-        LOGGER.info("Intercepting join to {}:{} — fetching manifest", host, gamePort);
+        LOGGER.info("════════ CONDUIT JOIN INTERCEPT ════════");
+        LOGGER.info("Stage 1/3 — intercept join to {}:{} (serverData={})",
+                host, gamePort, serverData == null ? "null" : "present");
+        LOGGER.info("Stage 2/3 — fetching manifest over HTTP...");
 
         ManifestHttpClient.fetch(host, gamePort).whenComplete((manifestOpt, error) -> {
             if (error != null) {
@@ -88,27 +92,38 @@ public final class ConduitJoinInterceptor {
             if (manifestOpt.isEmpty()) {
                 // No Conduit on the server (or endpoint unreachable). Treat as
                 // a vanilla server and connect normally.
-                LOGGER.info("No Conduit manifest at {}:{} — joining as vanilla", host, gamePort);
+                LOGGER.info("Stage 3/3 — NO MANIFEST at {}:{} → treating as vanilla, joining normally",
+                        host, gamePort);
+                LOGGER.info("  (if this server actually runs Conduit, the HTTP endpoint on port {}"
+                        + " or {} is unreachable — check the SERVER log for 'Conduit HTTP')", gamePort + 1, gamePort);
                 client.execute(proceed);
                 return;
             }
 
             ManifestPayload payload = manifestOpt.get();
+            LOGGER.info("Stage 3/3 — manifest received, diffing against installed mods...");
             ManifestVerifier verifier = new ManifestVerifier(new InstalledModIndex());
             ManifestVerifier.DiffResult diff = verifier.diff(payload);
 
+            LOGGER.info("Diff result: {} satisfied, {} missing, {} outdated",
+                    diff.satisfied().size(), diff.missing().size(), diff.outdated().size());
+
             if (!diff.hasWork()) {
-                LOGGER.info("All required mods already installed — joining {}", host);
+                LOGGER.info("All required mods already installed — proceeding with join to {}", host);
                 client.execute(proceed);
                 return;
             }
 
             LOGGER.info("Mods needed ({} missing, {} outdated) — opening install screen",
                     diff.missing().size(), diff.outdated().size());
+            for (ModEntry m : diff.allNeeded()) {
+                LOGGER.info("  → need: {} {} (required={})", m.modId(), m.requiredVersion(), m.required());
+            }
             client.execute(() -> {
                 // Show the install screen. It owns the rest of the flow: on
                 // success it reconnects; on failure the player stays on the
                 // screen and can go back.
+                LOGGER.info("Opening ModReviewScreen on the render thread");
                 client.setScreen(new ModReviewScreen(payload, diff, address, serverData, parent));
             });
         });

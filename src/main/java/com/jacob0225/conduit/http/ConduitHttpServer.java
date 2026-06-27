@@ -53,11 +53,13 @@ public class ConduitHttpServer {
 
     /** Start listening. Safe to call once per server lifecycle. */
     public void start() {
+        LOGGER.info("Starting HTTP manifest server on 0.0.0.0:{} ...", httpPort);
         try {
             // back-log of 50 is plenty for a mod-sync endpoint; bind to 0.0.0.0
             // so clients can reach it the same way they reach the game server.
             server = HttpServer.create(new InetSocketAddress("0.0.0.0", httpPort), 50);
             server.createContext("/manifest.json", new ManifestHandler());
+            server.createContext("/", new RootHandler()); // for diagnostics
             // A small dedicated pool keeps HTTP off the netty/external-worker
             // threads, so a slow client can't stall the game server.
             server.setExecutor(Executors.newFixedThreadPool(4, r -> {
@@ -66,15 +68,39 @@ public class ConduitHttpServer {
                 return t;
             }));
             server.start();
-            LOGGER.info("Conduit HTTP manifest endpoint on port {} (0.0.0.0)", httpPort);
+            LOGGER.info("✓ Conduit HTTP manifest endpoint LISTENING on 0.0.0.0:{} " +
+                    "(clients should fetch http://<server>:{}/manifest.json)", httpPort, httpPort);
+        } catch (java.net.BindException e) {
+            LOGGER.error("✗ FAILED to bind HTTP port {}: {} ", httpPort, e.getMessage());
+            LOGGER.error("  This usually means another process is using port {}. " +
+                    "Set a different port in config/conduit.properties (httpPort=NNNN).", httpPort);
+            server = null;
         } catch (IOException e) {
             // Non-fatal: the server still runs, just without the HTTP endpoint.
             // Clients will treat an unreachable endpoint as "vanilla server".
-            LOGGER.error("Failed to start Conduit HTTP server on port {}: {}",
-                    httpPort, e.getMessage());
-            LOGGER.error("Clients will not be able to auto-sync mods. " +
-                    "Check that port {} is free and open.", httpPort);
+            LOGGER.error("✗ Failed to start Conduit HTTP server on port {}: {} ({})",
+                    httpPort, e.getMessage(), e.getClass().getSimpleName());
+            LOGGER.error("  Clients will NOT be able to auto-sync mods.");
             server = null;
+        }
+    }
+
+    /** Diagnostics endpoint — confirms the server is reachable even if the
+     *  client is probing the wrong path/port. */
+    private class RootHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            try {
+                LOGGER.info("HTTP {} {} from {} (UA='{}')",
+                        exchange.getRequestMethod(),
+                        exchange.getRequestURI(),
+                        exchange.getRemoteAddress(),
+                        exchange.getRequestHeaders().getFirst("User-Agent"));
+                sendJson(exchange, 200,
+                        "{\"service\":\"conduit-manifest\",\"endpoint\":\"/manifest.json\"}");
+            } finally {
+                exchange.close();
+            }
         }
     }
 
@@ -104,12 +130,19 @@ public class ConduitHttpServer {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
             try {
+                LOGGER.info("→ GET /manifest.json from {} (UA='{}')",
+                        exchange.getRemoteAddress(),
+                        exchange.getRequestHeaders().getFirst("User-Agent"));
+
                 if (!"GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    LOGGER.info("  rejecting {} (405)", exchange.getRequestMethod());
                     sendJson(exchange, 405, "{\"error\":\"Method Not Allowed\"}");
                     return;
                 }
 
                 String json = ManifestJson.toJson(manifestProvider.getPayload());
+                LOGGER.info("  serving manifest ({} bytes, {} mods)",
+                        json.length(), manifestProvider.getPayload().mods().size());
                 sendJson(exchange, 200, json);
 
             } catch (Exception e) {

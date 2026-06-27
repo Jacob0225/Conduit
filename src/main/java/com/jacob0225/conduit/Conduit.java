@@ -58,21 +58,36 @@ public class Conduit implements ModInitializer {
     // ── Lifecycle ────────────────────────────────────────────────────────────
 
     private void onServerStarting(MinecraftServer server) {
+        LOGGER.info("════════ CONDUIT SERVER STARTING ════════");
         Path configDir = server.getServerDirectory().resolve("config");
         String mcVersion = server.getServerVersion();
+        LOGGER.info("Server directory: {}", server.getServerDirectory());
+        LOGGER.info("Config directory: {}", configDir);
+        LOGGER.info("Minecraft version: {}", mcVersion);
 
         // Load the manifest so the HTTP endpoint has something to serve.
+        LOGGER.info("Loading manifest provider...");
         manifestProvider = new ServerManifestProvider(configDir, mcVersion);
         manifestProvider.load();
+        LOGGER.info("Manifest provider loaded. Will serve {} mod(s).",
+                manifestProvider.getPayload().mods().size());
 
         // Determine the HTTP port: explicit override in conduit.properties, else
         // default to (game port + 1). We read the raw game port from the server
         // rather than assuming 25565 so non-default setups work too.
         int gamePort = server.getPort();
+        LOGGER.info("Game server port (from server.getPort()): {}", gamePort);
+        if (gamePort <= 0) {
+            LOGGER.warn("⚠ server.getPort() returned {} — that looks unset! " +
+                    "The HTTP port will be computed as ({}+1) which may be wrong. " +
+                    "If the manifest endpoint is unreachable, this is why.", gamePort, gamePort);
+        }
         int httpPort = resolveHttpPort(configDir, gamePort);
+        LOGGER.info("Resolved HTTP manifest port: {}", httpPort);
 
         httpServer = new ConduitHttpServer(manifestProvider, httpPort);
         httpServer.start();
+        LOGGER.info("════════ CONDUIT SERVER STARTED ════════");
     }
 
     private void onServerStopped(MinecraftServer server) {
