@@ -1,36 +1,37 @@
 package com.jacob0225.conduit.client.ui;
 
 import com.jacob0225.conduit.client.download.*;
-import com.jacob0225.conduit.client.network.ConduitJoinInterceptor;
 import com.jacob0225.conduit.manifest.ModEntry;
 import com.jacob0225.conduit.network.ManifestPayload;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.client.multiplayer.ServerData;
-import net.minecraft.client.multiplayer.resolver.ServerAddress;
 import net.minecraft.network.chat.Component;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 /**
  * Install screen shown when a join is intercepted and the client is missing
- * required mods. Runs the existing download pipeline, then offers to reconnect.
+ * required mods. Runs the existing download pipeline, then offers to restart
+ * the game so the newly-installed mods are actually loaded by the JVM.
  *
  * <p>Unlike the prior config-phase version, the player has NOT joined yet —
- * this screen appears instead of the connect. On success, "Reconnect" re-issues
- * the join via {@code ConnectScreen.startConnecting} with the bypass flag set
- * so the interceptor lets it through.
+ * this screen appears instead of the connect. On success, "Restart Game"
+ * relaunches the process via {@code ProcessHandle}, then stops the current
+ * JVM. On the next launch Fabric will load the new mods and the join will
+ * proceed without a registry mismatch.
  *
  * <p>Phases:
  *   PROMPT     — "Server requires N mods. Download?"
  *   DOWNLOADING — per-mod progress list, buttons disabled
- *   DONE        — "Installed!" + Reconnect / Back
+ *   DONE        — "Installed!" + Restart Game / Back
  *   ERROR       — "Some mods failed" + Retry / Back
  */
 public class ModReviewScreen extends Screen {
@@ -51,30 +52,24 @@ public class ModReviewScreen extends Screen {
 
     private final ManifestPayload payload;
     private final ManifestVerifier.DiffResult diff;
-
-    /** Captured at intercept time so Reconnect can re-issue the exact join. */
-    private final ServerAddress serverAddress;
-    private final ServerData    serverData;
     private final Screen        parent;
 
     private final List<ModEntry> modList;
     private final List<String>   modStatus;
     private final List<Integer>  modColor;
 
-    private Button primaryButton;   // Yes / (hidden) / Reconnect / Retry
+    private Button primaryButton;   // Yes / (hidden) / Restart Game / Retry
     private Button secondaryButton; // Cancel / Back
 
     private String footerText  = "";
     private int    footerColor = COL_WHITE;
 
     public ModReviewScreen(ManifestPayload payload, ManifestVerifier.DiffResult diff,
-                           ServerAddress address, ServerData serverData, Screen parent) {
+                           Screen parent) {
         super(Component.literal("Conduit — Mod Sync"));
-        this.payload       = payload;
-        this.diff          = diff;
-        this.serverAddress = address;
-        this.serverData    = serverData;
-        this.parent        = parent;
+        this.payload = payload;
+        this.diff    = diff;
+        this.parent  = parent;
 
         modList   = diff.allNeeded();
         modStatus = new ArrayList<>();
@@ -90,7 +85,7 @@ public class ModReviewScreen extends Screen {
         int cx = this.width / 2;
         int by = this.height - 36;
 
-        // Primary button action is phase-dependent: download on PROMPT, reconnect
+        // Primary button action is phase-dependent: download on PROMPT, restart
         // on DONE, retry on ERROR. Dispatching inside the lambda means we only
         // change the label to change behavior — no re-binding needed.
         primaryButton = Button.builder(
@@ -98,7 +93,7 @@ public class ModReviewScreen extends Screen {
                 btn -> {
                     switch (phase) {
                         case PROMPT, ERROR -> startDownload();
-                        case DONE          -> reconnect();
+                        case DONE          -> restartGame();
                         default            -> { /* disabled during DOWNLOADING */ }
                     }
                 }
@@ -131,7 +126,7 @@ public class ModReviewScreen extends Screen {
                 secondaryButton.active = false; // atomic install — no mid-download cancel
             }
             case DONE -> {
-                primaryButton.setMessage(Component.literal("Reconnect"));
+                primaryButton.setMessage(Component.literal("Restart Game"));
                 primaryButton.visible = true;
                 primaryButton.active = true;
                 secondaryButton.setMessage(Component.literal("Back"));
@@ -190,7 +185,7 @@ public class ModReviewScreen extends Screen {
 
         drawCentered(g, "Conduit will download them before you join.", cx, y, COL_YELLOW);
         y += 12;
-        drawCentered(g, "You'll connect automatically once installed.", cx, y, COL_YELLOW);
+        drawCentered(g, "The game will restart to load them, then you can join.", cx, y, COL_YELLOW);
     }
 
     private void renderProgress(GuiGraphicsExtractor g, int cx) {
@@ -271,7 +266,7 @@ public class ModReviewScreen extends Screen {
                 minecraft.execute(() -> {
                     if (result.failed().isEmpty()) {
                         phase = Phase.DONE;
-                        footerText  = "§aAll mods installed. Click Reconnect to join.";
+                        footerText  = "§aAll mods installed! Restart the game to load them.";
                         footerColor = COL_GREEN;
                     } else {
                         phase = Phase.ERROR;
@@ -294,26 +289,65 @@ public class ModReviewScreen extends Screen {
     }
 
     /**
-     * Re-issue the join that was intercepted. The bypass flag is set first so
-     * the interceptor lets this call straight through without re-checking.
+     * Attempts to relaunch the current Minecraft process, then stops this JVM.
+     *
+     * <p>Fabric mods cannot be hot-loaded: newly-downloaded JARs only become
+     * available to the game after a full JVM restart. Simply reconnecting would
+     * result in the same registry-mismatch disconnect because the downloaded
+     * mods were never loaded.
+     *
+     * <p>Relaunch strategy: {@code ProcessHandle.current().info()} gives us the
+     * exact command + arguments that were used to start this JVM, so we can
+     * spawn a new process with the same invocation. This works correctly with
+     * most launchers (vanilla, Modrinth, MultiMC, Prism) because they delegate
+     * to a plain {@code java} invocation. If the relaunch fails (e.g. the
+     * launcher wrapped the process in a way that hides the command), we fall
+     * back to a clean stop and show a message telling the player to reopen
+     * manually.
      */
-    private void reconnect() {
-        if (serverAddress == null) {
-            LOGGER.warn("Reconnect requested but no server address is available.");
-            backToParent();
+    private void restartGame() {
+        LOGGER.info("Conduit: restarting Minecraft to load newly-installed mods");
+
+        boolean relaunched = false;
+        try {
+            ProcessHandle.Info info = ProcessHandle.current().info();
+            java.util.Optional<String> command = info.command();
+            java.util.Optional<String[]> arguments = info.arguments();
+
+            if (command.isPresent()) {
+                List<String> cmd = new ArrayList<>();
+                cmd.add(command.get());
+                arguments.ifPresent(args -> cmd.addAll(Arrays.asList(args)));
+
+                LOGGER.info("Relaunching via: {}", command.get());
+                new ProcessBuilder(cmd)
+                        .inheritIO()
+                        .start();
+                relaunched = true;
+            } else {
+                LOGGER.warn("ProcessHandle.info().command() is empty — cannot relaunch automatically.");
+            }
+        } catch (IOException e) {
+            LOGGER.error("Failed to start new game process: {}", e.getMessage());
+        } catch (Exception e) {
+            LOGGER.warn("Unexpected error during relaunch attempt: {}", e.getMessage());
+        }
+
+        if (!relaunched) {
+            // Could not spawn a new process — update the UI to tell the player
+            // to reopen the game themselves, then close.
+            footerText  = "§eMods installed. Please reopen the launcher to play.";
+            footerColor = COL_YELLOW;
+            // Give the player a moment to read the message, then close.
+            minecraft.execute(() -> {
+                try { Thread.sleep(3000); } catch (InterruptedException ignored) {}
+                minecraft.stop();
+            });
             return;
         }
-        LOGGER.info("Reconnecting to {} after Conduit install", serverAddress);
-        ConduitJoinInterceptor.bypassNextCheck();
-        net.minecraft.client.gui.screens.ConnectScreen.startConnecting(
-                parent != null ? parent : this,
-                minecraft,
-                serverAddress,
-                serverData,
-                false,
-                new net.minecraft.client.multiplayer.TransferState(
-                        java.util.Map.of(), java.util.Map.of(), false)
-        );
+
+        // Relaunch succeeded — stop this JVM immediately.
+        minecraft.execute(minecraft::stop);
     }
 
     private void backToParent() {

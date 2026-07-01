@@ -1,30 +1,103 @@
 package com.jacob0225.conduit.client.download;
 
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.ModContainer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 
 /**
- * Snapshot of currently installed mods, built from the Fabric loader's
- * mod container list at the time Conduit processes a manifest.
+ * Snapshot of currently installed mods, built from two sources:
  *
- * Note: This reflects the mods loaded in the *current* game session.
- * Newly downloaded mods won't appear here until the game restarts.
+ * <ol>
+ *   <li><b>Fabric loader</b> — mods loaded into the JVM at startup.</li>
+ *   <li><b>Disk scan</b> of {@code mods/} — JAR files present on disk but not
+ *       yet loaded (e.g. downloaded by Conduit this session). Each JAR is
+ *       opened as a ZIP and its {@code fabric.mod.json} is read for the mod ID
+ *       and version.</li>
+ * </ol>
+ *
+ * Combining both sources means a mod is considered installed as soon as its
+ * JAR lands in {@code mods/}, even before the game restarts to actually load
+ * it. This prevents Conduit from re-downloading a mod it just installed.
  */
 public class InstalledModIndex {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger("Conduit/ModIndex");
 
     /** modId → installed version string */
     private final Map<String, String> installedVersions;
 
     public InstalledModIndex() {
         installedVersions = new HashMap<>();
+
+        // Source 1: Fabric loader (mods active in this JVM session)
         for (ModContainer container : FabricLoader.getInstance().getAllMods()) {
             String id      = container.getMetadata().getId();
             String version = container.getMetadata().getVersion().getFriendlyString();
             installedVersions.put(id, version);
+        }
+
+        // Source 2: Disk scan (JARs on disk not yet loaded — e.g. just downloaded)
+        scanModsDirectory();
+    }
+
+    // ── Disk scan ─────────────────────────────────────────────────────────────
+
+    private void scanModsDirectory() {
+        Path modsDir = FabricLoader.getInstance().getGameDir().resolve("mods");
+        if (!Files.isDirectory(modsDir)) return;
+
+        try (var stream = Files.list(modsDir)) {
+            stream.filter(p -> p.toString().endsWith(".jar"))
+                  .forEach(this::tryRegisterFromJar);
+        } catch (IOException e) {
+            LOGGER.warn("Conduit: could not list mods/ for disk scan: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Opens a JAR as a ZIP, reads {@code fabric.mod.json}, and registers the
+     * mod ID + version — but only if the Fabric loader hasn't already done so
+     * (loader data is authoritative for the currently-running version).
+     */
+    private void tryRegisterFromJar(Path jar) {
+        try (ZipFile zip = new ZipFile(jar.toFile())) {
+            ZipEntry fmj = zip.getEntry("fabric.mod.json");
+            if (fmj == null) return;
+
+            String json;
+            try (InputStream in = zip.getInputStream(fmj)) {
+                json = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            }
+
+            JsonObject obj = JsonParser.parseString(json).getAsJsonObject();
+            if (!obj.has("id") || !obj.has("version")) return;
+
+            String id      = obj.get("id").getAsString();
+            String version = obj.get("version").getAsString();
+            if (id.isBlank() || version.isBlank()) return;
+
+            // putIfAbsent: FabricLoader has the actually-running version; prefer it.
+            if (installedVersions.putIfAbsent(id, version) == null) {
+                LOGGER.debug("Conduit disk-scan: found {} {} in {} (not yet loaded by Fabric)",
+                        id, version, jar.getFileName());
+            }
+        } catch (Exception e) {
+            LOGGER.debug("Conduit: could not read fabric.mod.json from {}: {}",
+                    jar.getFileName(), e.getMessage());
         }
     }
 

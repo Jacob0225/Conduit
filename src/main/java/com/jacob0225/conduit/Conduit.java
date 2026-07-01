@@ -73,15 +73,19 @@ public class Conduit implements ModInitializer {
                 manifestProvider.getPayload().mods().size());
 
         // Determine the HTTP port: explicit override in conduit.properties, else
-        // default to (game port + 1). We read the raw game port from the server
-        // rather than assuming 25565 so non-default setups work too.
-        int gamePort = server.getPort();
-        LOGGER.info("Game server port (from server.getPort()): {}", gamePort);
+        // default to (game port + 1). server.getPort() is unreliable here: during
+        // SERVER_STARTING it can return -1 (not yet bound), which would compute an
+        // HTTP port of 0 (the OS picks a random ephemeral port the client can never
+        // guess). Read the configured port straight from server.properties instead,
+        // falling back to server.getPort() and then the Minecraft default.
+        int gamePort = readGamePortFromProperties(server.getServerDirectory());
         if (gamePort <= 0) {
-            LOGGER.warn("⚠ server.getPort() returned {} — that looks unset! " +
-                    "The HTTP port will be computed as ({}+1) which may be wrong. " +
-                    "If the manifest endpoint is unreachable, this is why.", gamePort, gamePort);
+            int fallback = server.getPort();
+            LOGGER.warn("⚠ Could not read a valid server-port from server.properties; " +
+                    "falling back to server.getPort() = {}", fallback);
+            gamePort = fallback > 0 ? fallback : 25565;
         }
+        LOGGER.info("Game server port (resolved): {}", gamePort);
         int httpPort = resolveHttpPort(configDir, gamePort);
         LOGGER.info("Resolved HTTP manifest port: {}", httpPort);
 
@@ -94,6 +98,49 @@ public class Conduit implements ModInitializer {
         if (httpServer != null) {
             httpServer.stop();
             httpServer = null;
+        }
+    }
+
+    // ── Game port ────────────────────────────────────────────────────────────
+
+    /**
+     * Read {@code server-port} from {@code server.properties} on disk. This is
+     * the actual, configured Minecraft port — unlike {@code server.getPort()},
+     * it's available immediately during {@code SERVER_STARTING}, before the
+     * network handler has bound a socket (where {@code getPort()} can still
+     * return {@code -1}).
+     *
+     * @return the configured port, or {@code -1} if it can't be determined.
+     */
+    private int readGamePortFromProperties(Path serverDirectory) {
+        Path propsPath = serverDirectory.resolve("server.properties");
+        if (!Files.exists(propsPath)) {
+            LOGGER.warn("server.properties not found at {}", propsPath);
+            return -1;
+        }
+        Properties props = new Properties();
+        try (Reader r = Files.newBufferedReader(propsPath)) {
+            props.load(r);
+        } catch (IOException e) {
+            LOGGER.warn("Could not read {}: {}", propsPath, e.getMessage());
+            return -1;
+        }
+        String raw = props.getProperty("server-port");
+        if (raw == null || raw.isBlank()) {
+            LOGGER.warn("server-port not set in {}", propsPath);
+            return -1;
+        }
+        try {
+            int port = Integer.parseInt(raw.trim());
+            if (port > 0 && port < 65536) {
+                LOGGER.info("Read server-port={} from {}", port, propsPath);
+                return port;
+            }
+            LOGGER.warn("server-port={} in {} is out of range", port, propsPath);
+            return -1;
+        } catch (NumberFormatException e) {
+            LOGGER.warn("server-port='{}' in {} is not an integer", raw, propsPath);
+            return -1;
         }
     }
 

@@ -19,17 +19,12 @@ import org.slf4j.LoggerFactory;
  * <p>Called by {@code MixinConnectScreen} when the player clicks Join. The flow:
  *   <ol>
  *     <li>Fetch the manifest from the server's HTTP endpoint (out-of-band).
- *     <li>Diff it against installed mods.
+ *     <li>Diff it against installed mods (both FabricLoader and disk scan).
  *     <li>If all satisfied → run {@code proceed} (the captured vanilla connect).
  *     <li>If missing/outdated → show {@link ModReviewScreen}; on successful
- *         install it calls {@code proceed} itself to do the real join.
+ *         install it restarts the game so the new mods are loaded. On next
+ *         launch the diff will pass and the player joins normally.
  *   </ol>
- *
- * <p><b>Recursion guard.</b> When installation finishes we re-invoke the join
- * by calling {@code ConnectScreen.startConnecting} again — which would normally
- * re-enter the mixin and re-check. To break that cycle, {@link #checkedRecently}
- * marks that a check has just passed for a given server, so the immediate
- * re-join skips the HTTP round-trip. The flag is cleared after one bypass.
  */
 public final class ConduitJoinInterceptor {
 
@@ -38,20 +33,19 @@ public final class ConduitJoinInterceptor {
     private ConduitJoinInterceptor() {}
 
     /**
-     * Set right after a successful check so the consequent re-join (post-install
-     * or the original connect) isn't re-intercepted. Cleared on use.
+     * Set by the mixin's {@code proceed} runnable right before re-invoking
+     * {@code startConnecting}, so the mixin knows not to intercept that second
+     * call. Cleared on use. NOT set by {@code ModReviewScreen} any more — on a
+     * successful install the game restarts rather than reconnecting.
      */
     private static volatile boolean bypassNextCheck = false;
 
-    /**
-     * Mark that the next join should skip the manifest check. Used internally
-     * right before re-issuing {@code startConnecting} after a successful install.
-     */
+    /** Called by the mixin's proceed runnable immediately before re-issuing startConnecting. */
     public static void bypassNextCheck() {
         bypassNextCheck = true;
     }
 
-    /** @return true if the mixin should let this join through unchecked. */
+    /** @return true (and clears the flag) if this join should skip the manifest check. */
     public static boolean shouldBypass() {
         if (bypassNextCheck) {
             bypassNextCheck = false;
@@ -121,16 +115,11 @@ public final class ConduitJoinInterceptor {
             }
             client.execute(() -> {
                 // Show the install screen. It owns the rest of the flow: on
-                // success it reconnects; on failure the player stays on the
-                // screen and can go back.
+                // success it restarts the game to load the new mods; on failure
+                // the player stays on the screen and can go back.
                 LOGGER.info("Opening ModReviewScreen on the render thread");
-                client.setScreen(new ModReviewScreen(payload, diff, address, serverData, parent));
+                client.setScreen(new ModReviewScreen(payload, diff, parent));
             });
         });
-    }
-
-    /** Package-private for tests / state reset. */
-    static void resetState() {
-        bypassNextCheck = false;
     }
 }

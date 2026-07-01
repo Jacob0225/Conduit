@@ -26,10 +26,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * <p>Both the server list "Join" button and Direct Connect funnel through
  * {@code startConnecting}, so one intercept covers every join path.
  *
- * <p><b>Recursion.</b> After a successful install, {@link ModReviewScreen}
- * re-issues a join (which re-enters this mixin). To avoid re-checking and
- * looping, {@link ConduitJoinInterceptor#bypassNextCheck()} is set first; this
- * mixin consumes it via {@link ConduitJoinInterceptor#shouldBypass()}.
+ * <p><b>Recursion guard.</b> When all mods are already installed, the interceptor
+ * calls the {@code proceed} runnable, which sets the bypass flag and re-invokes
+ * {@code startConnecting}. This mixin sees the flag and lets it through. The
+ * flag is never set after an install — instead the game restarts, so no
+ * re-entry happens in that path.
  */
 @Mixin(ConnectScreen.class)
 public class MixinConnectScreen {
