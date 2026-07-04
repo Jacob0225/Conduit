@@ -46,8 +46,14 @@ public class ModDownloadManager {
 
     public record DownloadResult(
             List<String> succeeded,
-            List<String> failed
-    ) {}
+            List<String> failed,
+            java.util.Map<String, String> installedFiles // modId → jar filename in mods/
+    ) {
+        /** Convenience for callers that only care about pass/fail. */
+        public static DownloadResult empty() {
+            return new DownloadResult(java.util.List.of(), java.util.List.of(), java.util.Map.of());
+        }
+    }
 
     private final ModrinthClient modrinthClient;
     private final CurseForgeClient curseForgeClient; // may be null if no API key configured
@@ -94,12 +100,13 @@ public class ModDownloadManager {
     /**
      * Downloads and installs all mods in {@code entries}.
      *
-     * @param entries  list from {@link ManifestVerifier.DiffResult#allNeeded()}
+     * @param entries  list of mods to install (required mods from the manifest)
      * @param listener progress callback (called on the calling thread)
      */
     public DownloadResult downloadAll(List<ModEntry> entries, ProgressListener listener) {
         List<String> succeeded = new ArrayList<>();
         List<String> failed    = new ArrayList<>();
+        java.util.Map<String, String> installed = new java.util.HashMap<>();
 
         int total = entries.size();
         int current = 0;
@@ -108,17 +115,24 @@ public class ModDownloadManager {
             current++;
             listener.onStart(entry.modId(), total, current);
 
-            boolean ok = downloadOne(entry, listener);
-            if (ok) succeeded.add(entry.modId());
-            else     failed.add(entry.modId());
+            OneResult r = downloadOne(entry, listener);
+            if (r.ok()) {
+                succeeded.add(entry.modId());
+                if (r.filename() != null) installed.put(entry.modId(), r.filename());
+            } else {
+                failed.add(entry.modId());
+            }
         }
 
-        return new DownloadResult(succeeded, failed);
+        return new DownloadResult(succeeded, failed, java.util.Collections.unmodifiableMap(installed));
     }
 
     // ── Private pipeline ──────────────────────────────────────────────────────
 
-    private boolean downloadOne(ModEntry entry, ProgressListener listener) {
+    /** Outcome of a single mod install: success flag + the jar filename installed. */
+    private record OneResult(boolean ok, String filename) {}
+
+    private OneResult downloadOne(ModEntry entry, ProgressListener listener) {
         LOGGER.info("Downloading {} {} ...", entry.modId(), entry.requiredVersion());
 
         // Step 1: Resolve via Modrinth (primary)
@@ -140,7 +154,7 @@ public class ModDownloadManager {
                     + " from Modrinth or CurseForge";
             LOGGER.error(reason);
             listener.onError(entry.modId(), reason);
-            return false;
+            return new OneResult(false, null);
         }
 
         // Step 3: Download to staging
@@ -154,7 +168,7 @@ public class ModDownloadManager {
         if (Files.exists(destination)) {
             LOGGER.info("{} already present in mods/ — skipping download.", entry.modId());
             listener.onComplete(entry.modId());
-            return true;
+            return new OneResult(true, filename);
         }
 
         Path stagingFile = stagingDir.resolve(entry.modId() + "-" + entry.requiredVersion() + ".jar.tmp");
@@ -165,7 +179,7 @@ public class ModDownloadManager {
             LOGGER.error("Download failed for {}: {}", entry.modId(), e.getMessage());
             listener.onError(entry.modId(), "Download failed: " + e.getMessage());
             deleteSilently(stagingFile);
-            return false;
+            return new OneResult(false, null);
         }
 
         // Step 4: Hash verification
@@ -182,11 +196,11 @@ public class ModDownloadManager {
             LOGGER.error("HASH MISMATCH for {}: {}", entry.modId(), e.getMessage());
             listener.onError(entry.modId(), "Hash verification failed — file rejected");
             deleteSilently(stagingFile);
-            return false;
+            return new OneResult(false, null);
         } catch (IOException e) {
             LOGGER.error("Could not read staging file for verification: {}", e.getMessage());
             deleteSilently(stagingFile);
-            return false;
+            return new OneResult(false, null);
         }
 
         // Step 5: Move to managed directory
@@ -196,11 +210,11 @@ public class ModDownloadManager {
         } catch (IOException e) {
             LOGGER.error("Failed to install {}: {}", entry.modId(), e.getMessage());
             deleteSilently(stagingFile);
-            return false;
+            return new OneResult(false, null);
         }
 
         listener.onComplete(entry.modId());
-        return true;
+        return new OneResult(true, filename);
     }
 
     private void downloadFile(String url, Path destination) throws IOException {

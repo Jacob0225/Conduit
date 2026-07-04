@@ -27,13 +27,16 @@ import java.util.concurrent.CompletableFuture;
  * {@link ManifestJson#fromJson} re-validates every field through the same
  * {@code InputValidator} gate used for network packets.
  *
- * <p>Port convention: the HTTP endpoint defaults to (game port + 1). We try
- * that first; if it refuses we also try the game port itself as a fallback,
- * since some operators may forward only the single MC port.
+ * <p>Port convention: the HTTP endpoint defaults to a fixed port (25566), which
+ * the client probes first. If that refuses, we fall back to (game port + 1) for
+ * legacy servers, then to the game port itself for single-port setups.
  */
 public class ManifestHttpClient {
 
     private static final Logger LOGGER = LoggerFactory.getLogger("Conduit/HTTP-Client");
+
+    /** Fixed default port that the server listens on unless overridden. */
+    private static final int DEFAULT_HTTP_PORT = 25566;
 
     /** How long to wait for the manifest endpoint before giving up. */
     private static final Duration TIMEOUT = Duration.ofSeconds(4);
@@ -54,25 +57,45 @@ public class ManifestHttpClient {
      *         Conduit (endpoint unreachable) — never throws on connection failure
      */
     public static CompletableFuture<Optional<ManifestPayload>> fetch(String host, int gamePort) {
-        // Candidate ports: the conventional (gamePort+1) first, then gamePort
-        // itself as a fallback for single-port setups.
-        int primary   = gamePort + 1;
-        int secondary = gamePort;
+        // Candidate ports, in order:
+        //   1. The fixed default (25566) — where a current server listens.
+        //   2. gamePort + 1            — legacy convention.
+        //   3. gamePort                — single-port setups (only MC port forwarded).
+        // Skip a candidate if it duplicates one already tried.
+        int primary   = DEFAULT_HTTP_PORT;
+        int secondary = gamePort + 1;
+        int tertiary  = gamePort;
 
         LOGGER.info("=== CONDUIT MANIFEST FETCH ===");
         LOGGER.info("Target host='{}', gamePort={}", host, gamePort);
-        LOGGER.info("Will try port {} (primary, gamePort+1), then {} (fallback, gamePort)",
-                primary, secondary);
+        LOGGER.info("Will try ports: {} (default), {} (gamePort+1), {} (gamePort)",
+                primary, secondary, tertiary);
 
-        return tryFetch(host, primary, "primary")
-                .thenCompose(opt -> {
-                    if (opt.isPresent()) {
-                        LOGGER.info("✓ Got manifest from primary port {} — skipping fallback", primary);
-                        return CompletableFuture.completedFuture(opt);
-                    }
-                    LOGGER.info("Primary port {} had no manifest — trying fallback port {}", primary, secondary);
-                    return tryFetch(host, secondary, "fallback");
-                });
+        CompletableFuture<Optional<ManifestPayload>> chain =
+                tryFetch(host, primary, "default")
+                        .thenCompose(opt -> {
+                            if (opt.isPresent()) {
+                                LOGGER.info("✓ Got manifest from default port {} — skipping fallbacks", primary);
+                                return CompletableFuture.completedFuture(opt);
+                            }
+                            LOGGER.info("Default port {} had no manifest — trying gamePort+1 ({})", primary, secondary);
+                            return tryFetch(host, secondary, "gamePort+1");
+                        });
+
+        // Append the gamePort fallback only if it differs from the candidates
+        // already attempted.
+        if (tertiary != primary && tertiary != secondary) {
+            chain = chain.thenCompose(opt -> {
+                if (opt.isPresent()) {
+                    LOGGER.info("✓ Got manifest from port {} — skipping final fallback", secondary);
+                    return CompletableFuture.completedFuture(opt);
+                }
+                LOGGER.info("Port {} had no manifest — trying gamePort ({})", secondary, tertiary);
+                return tryFetch(host, tertiary, "gamePort");
+            });
+        }
+
+        return chain;
     }
 
     private static CompletableFuture<Optional<ManifestPayload>> tryFetch(String host, int port, String label) {

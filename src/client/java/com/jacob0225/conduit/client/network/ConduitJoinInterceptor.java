@@ -1,9 +1,10 @@
 package com.jacob0225.conduit.client.network;
 
-import com.jacob0225.conduit.client.download.InstalledModIndex;
-import com.jacob0225.conduit.client.download.ManifestVerifier;
+import com.jacob0225.conduit.client.download.ModStashManager;
+import com.jacob0225.conduit.client.download.ServerInstallRecord;
 import com.jacob0225.conduit.client.http.ManifestHttpClient;
 import com.jacob0225.conduit.client.ui.ModReviewScreen;
+import com.jacob0225.conduit.client.ui.ModSwitchScreen;
 import com.jacob0225.conduit.manifest.ModEntry;
 import com.jacob0225.conduit.network.ManifestPayload;
 import net.minecraft.client.Minecraft;
@@ -19,15 +20,20 @@ import org.slf4j.LoggerFactory;
  * <p>Called by {@code MixinConnectScreen} when the player clicks Join. The flow:
  *   <ol>
  *     <li>Fetch the manifest from the server's HTTP endpoint (out-of-band).
- *     <li>Diff it against installed mods.
- *     <li>If all satisfied → run {@code proceed} (the captured vanilla connect).
- *     <li>If missing/outdated → show {@link ModReviewScreen}; on successful
- *         install it calls {@code proceed} itself to do the real join.
+ *     <li>Check the per-server {@link ServerInstallRecord} — does it satisfy the
+ *         manifest? If yes → run {@code proceed} (the captured vanilla connect).
+ *     <li>If not (first join, mod added/updated, record missing) → show
+ *         {@link ModReviewScreen}; on successful install it writes the record
+ *         and restarts to load the new mods.
  *   </ol>
+ *
+ * <p>The record is the single source of truth for "are we good for this server?"
+ * We don't diff against live loaded mods: a player can keep separate mod sets
+ * for different servers, and the record keeps each server's install isolated.
  *
  * <p><b>Recursion guard.</b> When installation finishes we re-invoke the join
  * by calling {@code ConnectScreen.startConnecting} again — which would normally
- * re-enter the mixin and re-check. To break that cycle, {@link #checkedRecently}
+ * re-enter the mixin and re-check. To break that cycle, {@link #bypassNextCheck}
  * marks that a check has just passed for a given server, so the immediate
  * re-join skips the HTTP round-trip. The flag is cleared after one bypass.
  */
@@ -94,37 +100,46 @@ public final class ConduitJoinInterceptor {
                 // a vanilla server and connect normally.
                 LOGGER.info("Stage 3/3 — NO MANIFEST at {}:{} → treating as vanilla, joining normally",
                         host, gamePort);
-                LOGGER.info("  (if this server actually runs Conduit, the HTTP endpoint on port {}"
-                        + " or {} is unreachable — check the SERVER log for 'Conduit HTTP')", gamePort + 1, gamePort);
+                LOGGER.info("  (if this server actually runs Conduit, its HTTP endpoint is unreachable"
+                        + " — check the SERVER log for 'Conduit HTTP' and confirm port 25566 is open)");
                 client.execute(proceed);
                 return;
             }
 
             ManifestPayload payload = manifestOpt.get();
-            LOGGER.info("Stage 3/3 — manifest received, diffing against installed mods...");
-            ManifestVerifier verifier = new ManifestVerifier(new InstalledModIndex());
-            ManifestVerifier.DiffResult diff = verifier.diff(payload);
+            LOGGER.info("Stage 3/3 — manifest received ({} mods), checking install record...",
+                    payload.mods().size());
 
-            LOGGER.info("Diff result: {} satisfied, {} missing, {} outdated",
-                    diff.satisfied().size(), diff.missing().size(), diff.outdated().size());
-
-            if (!diff.hasWork()) {
-                LOGGER.info("All required mods already installed — proceeding with join to {}", host);
-                client.execute(proceed);
+            ServerInstallRecord record = ServerInstallRecord.forServer(host, gamePort);
+            if (record.isSatisfied(payload)) {
+                // Record says we're good for this server — but the player may be
+                // switching FROM another server whose mod set is still in mods/.
+                // Reconcile the stash: move other servers' jars out and this one's
+                // back in. If mods/ actually changed, we can't just join (Fabric
+                // loaded the old set at startup) — show the switch screen so the
+                // player can restart. If nothing moved, join normally.
+                ModStashManager stash = new ModStashManager();
+                ModStashManager.ReconcileResult rc =
+                        stash.reconcile(record.key(), record.ownedJarFilenames());
+                if (rc.changed()) {
+                    LOGGER.info("Mod set differs from what's loaded — opening switch screen for {}:{}",
+                            host, gamePort);
+                    client.execute(() ->
+                            client.setScreen(new ModSwitchScreen(payload.serverName(), parent)));
+                } else {
+                    LOGGER.info("Install record satisfies manifest for {}:{} and mods/ already correct — joining",
+                            host, gamePort);
+                    client.execute(proceed);
+                }
                 return;
             }
 
-            LOGGER.info("Mods needed ({} missing, {} outdated) — opening install screen",
-                    diff.missing().size(), diff.outdated().size());
-            for (ModEntry m : diff.allNeeded()) {
-                LOGGER.info("  → need: {} {} (required={})", m.modId(), m.requiredVersion(), m.required());
-            }
+            int required = (int) payload.mods().stream().filter(ModEntry::required).count();
+            LOGGER.info("Install record does NOT satisfy manifest — opening install screen "
+                    + "({} required mod(s))", required);
             client.execute(() -> {
-                // Show the install screen. It owns the rest of the flow: on
-                // success it reconnects; on failure the player stays on the
-                // screen and can go back.
                 LOGGER.info("Opening ModReviewScreen on the render thread");
-                client.setScreen(new ModReviewScreen(payload, diff, address, serverData, parent));
+                client.setScreen(new ModReviewScreen(payload, address, serverData, parent));
             });
         });
     }

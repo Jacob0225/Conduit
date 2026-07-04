@@ -39,8 +39,13 @@ public class Conduit implements ModInitializer {
     public static final String MOD_ID = "conduit";
     public static final Logger LOGGER = LoggerFactory.getLogger("Conduit");
 
-    /** Default manifest port = game port + 1 (e.g. 25565 → 25566). */
-    public static final int DEFAULT_PORT_OFFSET = 1;
+    /**
+     * Default manifest port. A fixed value (25566) is used so operators only
+     * need to forward one well-known port regardless of their game port — this
+     * is the value the client probes first too. Override via {@code httpPort}
+     * in {@code config/conduit.properties}.
+     */
+    public static final int DEFAULT_HTTP_PORT = 25566;
 
     private ConduitHttpServer httpServer;
     private ServerManifestProvider manifestProvider;
@@ -73,16 +78,12 @@ public class Conduit implements ModInitializer {
                 manifestProvider.getPayload().mods().size());
 
         // Determine the HTTP port: explicit override in conduit.properties, else
-        // default to (game port + 1). We read the raw game port from the server
-        // rather than assuming 25565 so non-default setups work too.
+        // default to the fixed DEFAULT_HTTP_PORT (25566). A fixed default means
+        // operators forward one well-known port regardless of their game port,
+        // and the client knows where to probe first.
         int gamePort = server.getPort();
         LOGGER.info("Game server port (from server.getPort()): {}", gamePort);
-        if (gamePort <= 0) {
-            LOGGER.warn("⚠ server.getPort() returned {} — that looks unset! " +
-                    "The HTTP port will be computed as ({}+1) which may be wrong. " +
-                    "If the manifest endpoint is unreachable, this is why.", gamePort, gamePort);
-        }
-        int httpPort = resolveHttpPort(configDir, gamePort);
+        int httpPort = resolveHttpPort(configDir);
         LOGGER.info("Resolved HTTP manifest port: {}", httpPort);
 
         httpServer = new ConduitHttpServer(manifestProvider, httpPort);
@@ -101,11 +102,11 @@ public class Conduit implements ModInitializer {
 
     /**
      * Read {@code httpPort} from {@code config/conduit.properties}. If absent or
-     * unparsable, fall back to {@code gamePort + DEFAULT_PORT_OFFSET}. The
+     * unparsable, fall back to the fixed {@link #DEFAULT_HTTP_PORT}. The
      * properties file is created (with a comment) on first run so operators
      * discover the option without reading docs.
      */
-    private int resolveHttpPort(Path configDir, int gamePort) {
+    private int resolveHttpPort(Path configDir) {
         Path propsPath = configDir.resolve("conduit.properties");
         Properties props = new Properties();
 
@@ -116,7 +117,7 @@ public class Conduit implements ModInitializer {
                 LOGGER.warn("Could not read {}: {}", propsPath, e.getMessage());
             }
         } else {
-            writeDefaultProperties(propsPath, gamePort);
+            writeDefaultProperties(propsPath);
         }
 
         String raw = props.getProperty("httpPort");
@@ -124,25 +125,23 @@ public class Conduit implements ModInitializer {
             try {
                 int port = Integer.parseInt(raw.trim());
                 if (port > 0 && port < 65536) return port;
-                LOGGER.warn("httpPort={} out of range; using default ({}+{})",
-                        port, gamePort, DEFAULT_PORT_OFFSET);
+                LOGGER.warn("httpPort={} out of range; using default ({})", port, DEFAULT_HTTP_PORT);
             } catch (NumberFormatException e) {
-                LOGGER.warn("httpPort='{}' is not an integer; using default ({}+{})",
-                        raw, gamePort, DEFAULT_PORT_OFFSET);
+                LOGGER.warn("httpPort='{}' is not an integer; using default ({})",
+                        raw, DEFAULT_HTTP_PORT);
             }
         }
-        return gamePort + DEFAULT_PORT_OFFSET;
+        return DEFAULT_HTTP_PORT;
     }
 
-    private void writeDefaultProperties(Path propsPath, int gamePort) {
+    private void writeDefaultProperties(Path propsPath) {
         try {
             Files.createDirectories(propsPath.getParent());
             try (Writer w = Files.newBufferedWriter(propsPath)) {
                 // Properties.store would work, but a hand-written header reads
                 // better when an operator opens it cold.
                 w.write("# Conduit configuration\n");
-                w.write("# Port for the HTTP manifest endpoint. Empty = auto (game port + 1 = "
-                        + (gamePort + DEFAULT_PORT_OFFSET) + ").\n");
+                w.write("# Port for the HTTP manifest endpoint. Empty = default (" + DEFAULT_HTTP_PORT + ").\n");
                 w.write("httpPort=\n");
             }
             LOGGER.info("Wrote default config to {}", propsPath);
