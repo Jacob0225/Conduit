@@ -41,6 +41,10 @@ loom {
 
 repositories {
     // Loom adds the essential maven repositories automatically.
+    maven {
+        name = "Terraformers"
+        url = "https://maven.terraformersmc.com/"
+    }
 }
 
 dependencies {
@@ -49,6 +53,7 @@ dependencies {
     // 26.1 is unobfuscated — use plain implementation, not modImplementation
     implementation "net.fabricmc:fabric-loader:${project.loader_version}"
     implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+    implementation "com.terraformersmc:modmenu:${project.modmenu_version}"
 }
 
 processResources {
