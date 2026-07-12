@@ -84,7 +84,7 @@ public class ModStashManager {
         Map<String, String> ownerByFilename = new HashMap<>();
         for (ServerInstallRecord rec : ServerInstallRecord.allRecords()) {
             String owner = rec.key().stem();
-            for (String fn : rec.ownedJarFilenames()) {
+            for (String fn : rec.managedJarFilenames()) {
                 ownerByFilename.putIfAbsent(fn, owner);
             }
         }
@@ -101,10 +101,12 @@ public class ModStashManager {
                     String fn = jar.getFileName().toString();
                     String owner = ownerByFilename.get(fn);
                     if (owner == null) continue;             // not a Conduit-owned jar
-                    if (owner.equals(targetKey.stem())) continue; // belongs to target, leave it
                     if (targetFilenames.contains(fn)) continue;  // target needs it too
 
-                    // Belongs to a different server and the target doesn't need it.
+                    // This Conduit-managed jar is absent from the target set.
+                    // It may be a superseded version previously owned by this
+                    // same server, so target ownership alone is not enough to
+                    // keep it active.
                     Path stashSlot = gameDir.resolve(STASH_DIR).resolve(owner).resolve(fn);
                     try {
                         Files.createDirectories(stashSlot.getParent());

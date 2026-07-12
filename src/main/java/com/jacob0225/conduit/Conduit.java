@@ -1,19 +1,13 @@
 package com.jacob0225.conduit;
 
-import com.jacob0225.conduit.http.ConduitHttpServer;
-import com.jacob0225.conduit.manifest.ServerManifestProvider;
+import com.jacob0225.conduit.config.ServerConfig;
+import com.jacob0225.conduit.server.ConduitServerRuntime;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.minecraft.server.MinecraftServer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
-import java.io.Reader;
-import java.io.Writer;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.Properties;
 
 /**
  * Server-side (and common) entrypoint for Conduit.
@@ -32,7 +26,7 @@ import java.util.Properties;
  *
  * <p>Lifecycle: the manifest is (re)loaded and the HTTP server (re)started on
  * every {@code SERVER_STARTING}, and both are torn down on
- * {@code SERVER_STOPPED}. Config lives at {@code config/conduit.properties}.
+ * {@code SERVER_STOPPED}. Config lives at {@code config/conduit/server.properties}.
  */
 public class Conduit implements ModInitializer {
 
@@ -43,12 +37,11 @@ public class Conduit implements ModInitializer {
      * Default manifest port. A fixed value (25566) is used so operators only
      * need to forward one well-known port regardless of their game port — this
      * is the value the client probes first too. Override via {@code httpPort}
-     * in {@code config/conduit.properties}.
+     * in {@code config/conduit/server.properties}.
      */
     public static final int DEFAULT_HTTP_PORT = 25566;
 
-    private ConduitHttpServer httpServer;
-    private ServerManifestProvider manifestProvider;
+    private final ConduitServerRuntime serverRuntime = new ConduitServerRuntime();
 
     @Override
     public void onInitialize() {
@@ -64,89 +57,14 @@ public class Conduit implements ModInitializer {
 
     private void onServerStarting(MinecraftServer server) {
         LOGGER.info("════════ CONDUIT SERVER STARTING ════════");
-        Path configDir = server.getServerDirectory().resolve("config");
-        String mcVersion = server.getServerVersion();
-        LOGGER.info("Server directory: {}", server.getServerDirectory());
-        LOGGER.info("Config directory: {}", configDir);
-        LOGGER.info("Minecraft version: {}", mcVersion);
-
-        // Load the manifest so the HTTP endpoint has something to serve.
-        LOGGER.info("Loading manifest provider...");
-        manifestProvider = new ServerManifestProvider(configDir, mcVersion);
-        manifestProvider.load();
-        LOGGER.info("Manifest provider loaded. Will serve {} mod(s).",
-                manifestProvider.getPayload().mods().size());
-
-        // Determine the HTTP port: explicit override in conduit.properties, else
-        // default to the fixed DEFAULT_HTTP_PORT (25566). A fixed default means
-        // operators forward one well-known port regardless of their game port,
-        // and the client knows where to probe first.
-        int gamePort = server.getPort();
-        LOGGER.info("Game server port (from server.getPort()): {}", gamePort);
-        int httpPort = resolveHttpPort(configDir);
-        LOGGER.info("Resolved HTTP manifest port: {}", httpPort);
-
-        httpServer = new ConduitHttpServer(manifestProvider, httpPort);
-        httpServer.start();
+        serverRuntime.start(server.getServerDirectory(), server.getServerVersion());
         LOGGER.info("════════ CONDUIT SERVER STARTED ════════");
     }
 
     private void onServerStopped(MinecraftServer server) {
-        if (httpServer != null) {
-            httpServer.stop();
-            httpServer = null;
-        }
+        serverRuntime.stop();
     }
 
     // ── Config ───────────────────────────────────────────────────────────────
 
-    /**
-     * Read {@code httpPort} from {@code config/conduit.properties}. If absent or
-     * unparsable, fall back to the fixed {@link #DEFAULT_HTTP_PORT}. The
-     * properties file is created (with a comment) on first run so operators
-     * discover the option without reading docs.
-     */
-    private int resolveHttpPort(Path configDir) {
-        Path propsPath = configDir.resolve("conduit.properties");
-        Properties props = new Properties();
-
-        if (Files.exists(propsPath)) {
-            try (Reader r = Files.newBufferedReader(propsPath)) {
-                props.load(r);
-            } catch (IOException e) {
-                LOGGER.warn("Could not read {}: {}", propsPath, e.getMessage());
-            }
-        } else {
-            writeDefaultProperties(propsPath);
-        }
-
-        String raw = props.getProperty("httpPort");
-        if (raw != null && !raw.isBlank()) {
-            try {
-                int port = Integer.parseInt(raw.trim());
-                if (port > 0 && port < 65536) return port;
-                LOGGER.warn("httpPort={} out of range; using default ({})", port, DEFAULT_HTTP_PORT);
-            } catch (NumberFormatException e) {
-                LOGGER.warn("httpPort='{}' is not an integer; using default ({})",
-                        raw, DEFAULT_HTTP_PORT);
-            }
-        }
-        return DEFAULT_HTTP_PORT;
-    }
-
-    private void writeDefaultProperties(Path propsPath) {
-        try {
-            Files.createDirectories(propsPath.getParent());
-            try (Writer w = Files.newBufferedWriter(propsPath)) {
-                // Properties.store would work, but a hand-written header reads
-                // better when an operator opens it cold.
-                w.write("# Conduit configuration\n");
-                w.write("# Port for the HTTP manifest endpoint. Empty = default (" + DEFAULT_HTTP_PORT + ").\n");
-                w.write("httpPort=\n");
-            }
-            LOGGER.info("Wrote default config to {}", propsPath);
-        } catch (IOException e) {
-            LOGGER.warn("Could not write {}: {}", propsPath, e.getMessage());
-        }
-    }
 }

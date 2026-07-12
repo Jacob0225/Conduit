@@ -1,5 +1,6 @@
 package com.jacob0225.conduit.client;
 
+import com.jacob0225.conduit.client.config.ClientConfig;
 import com.jacob0225.conduit.client.download.ServerInstallRecord;
 import net.fabricmc.loader.api.FabricLoader;
 import org.slf4j.Logger;
@@ -32,6 +33,7 @@ public class ConduitClient implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
+        ClientConfig.load();
         verifyInstallRecords();
         LOGGER.info("Conduit client ready — join interception active (HTTP manifest mode)");
     }

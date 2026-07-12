@@ -2,6 +2,7 @@ package com.jacob0225.conduit.http;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.jacob0225.conduit.config.ServerConfig;
 import com.jacob0225.conduit.manifest.ServerManifestProvider;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
@@ -36,50 +37,52 @@ public class ConduitHttpServer {
     private static final Gson   GSON    = new GsonBuilder().disableHtmlEscaping().create();
 
     private final ServerManifestProvider manifestProvider;
-    private final int httpPort;
+    private final ServerConfig config;
 
     private HttpServer server;
 
     /**
      * @param manifestProvider source of the current validated manifest
-     * @param httpPort         TCP port to listen on. The server side computes
-     *                         this as (MC game port + 1) by default so the
-     *                         operator doesn't have to configure anything.
+     * @param config server endpoint settings.
      */
-    public ConduitHttpServer(ServerManifestProvider manifestProvider, int httpPort) {
+    public ConduitHttpServer(ServerManifestProvider manifestProvider, ServerConfig config) {
         this.manifestProvider = manifestProvider;
-        this.httpPort         = httpPort;
+        this.config = config;
     }
 
     /** Start listening. Safe to call once per server lifecycle. */
     public void start() {
-        LOGGER.info("Starting HTTP manifest server on 0.0.0.0:{} ...", httpPort);
+        LOGGER.info("Starting HTTP manifest server on {}:{} ...", config.bindAddress(), config.httpPort());
         try {
             // back-log of 50 is plenty for a mod-sync endpoint; bind to 0.0.0.0
             // so clients can reach it the same way they reach the game server.
-            server = HttpServer.create(new InetSocketAddress("0.0.0.0", httpPort), 50);
+            server = HttpServer.create(new InetSocketAddress(config.bindAddress(), config.httpPort()), 50);
             server.createContext("/manifest.json", new ManifestHandler());
-            server.createContext("/", new RootHandler()); // for diagnostics
+            if (config.diagnosticsEnabled()) {
+                server.createContext("/", new RootHandler());
+            }
             // A small dedicated pool keeps HTTP off the netty/external-worker
             // threads, so a slow client can't stall the game server.
-            server.setExecutor(Executors.newFixedThreadPool(4, r -> {
+            server.setExecutor(Executors.newFixedThreadPool(config.workerThreads(), r -> {
                 Thread t = new Thread(r, "Conduit-HTTP");
                 t.setDaemon(true);
                 return t;
             }));
             server.start();
-            LOGGER.info("✓ Conduit HTTP manifest endpoint LISTENING on 0.0.0.0:{} " +
-                    "(clients should fetch http://<server>:{}/manifest.json)", httpPort, httpPort);
+            LOGGER.info("Conduit HTTP manifest endpoint listening on {}:{} " +
+                    "(clients should fetch http://<server>:{}/manifest.json)",
+                    config.bindAddress(), config.httpPort(), config.httpPort());
         } catch (java.net.BindException e) {
-            LOGGER.error("✗ FAILED to bind HTTP port {}: {} ", httpPort, e.getMessage());
+            LOGGER.error("Failed to bind HTTP port {}: {} ", config.httpPort(), e.getMessage());
             LOGGER.error("  This usually means another process is using port {}. " +
-                    "Set a different port in config/conduit.properties (httpPort=NNNN).", httpPort);
+                    "Set a different port in config/conduit/server.properties (httpPort=NNNN).",
+                    config.httpPort());
             server = null;
         } catch (IOException e) {
             // Non-fatal: the server still runs, just without the HTTP endpoint.
             // Clients will treat an unreachable endpoint as "vanilla server".
             LOGGER.error("✗ Failed to start Conduit HTTP server on port {}: {} ({})",
-                    httpPort, e.getMessage(), e.getClass().getSimpleName());
+                    config.httpPort(), e.getMessage(), e.getClass().getSimpleName());
             LOGGER.error("  Clients will NOT be able to auto-sync mods.");
             server = null;
         }
@@ -91,11 +94,7 @@ public class ConduitHttpServer {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
             try {
-                LOGGER.info("HTTP {} {} from {} (UA='{}')",
-                        exchange.getRequestMethod(),
-                        exchange.getRequestURI(),
-                        exchange.getRemoteAddress(),
-                        exchange.getRequestHeaders().getFirst("User-Agent"));
+                logRequest(exchange);
                 sendJson(exchange, 200,
                         "{\"service\":\"conduit-manifest\",\"endpoint\":\"/manifest.json\"}");
             } finally {
@@ -115,7 +114,7 @@ public class ConduitHttpServer {
     }
 
     public int getHttpPort() {
-        return httpPort;
+        return config.httpPort();
     }
 
     // ── Handler ─────────────────────────────────────────────────────────────
@@ -130,9 +129,7 @@ public class ConduitHttpServer {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
             try {
-                LOGGER.info("→ GET /manifest.json from {} (UA='{}')",
-                        exchange.getRemoteAddress(),
-                        exchange.getRequestHeaders().getFirst("User-Agent"));
+                logRequest(exchange);
 
                 if (!"GET".equalsIgnoreCase(exchange.getRequestMethod())) {
                     LOGGER.info("  rejecting {} (405)", exchange.getRequestMethod());
@@ -166,5 +163,14 @@ public class ConduitHttpServer {
         try (OutputStream os = exchange.getResponseBody()) {
             os.write(bytes);
         }
+    }
+
+    private void logRequest(HttpExchange exchange) {
+        if (!config.logRequests()) return;
+        LOGGER.info("HTTP {} {} from {} (UA='{}')",
+                exchange.getRequestMethod(),
+                exchange.getRequestURI(),
+                exchange.getRemoteAddress(),
+                exchange.getRequestHeaders().getFirst("User-Agent"));
     }
 }

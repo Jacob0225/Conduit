@@ -6,6 +6,24 @@ plugins {
 version = project.mod_version
 group = project.maven_group
 
+ext.conduitTargets = [
+        [loader: "fabric",   minecraft: "26.2",    status: "scaffolded"],
+        [loader: "fabric",   minecraft: "26.1",    status: "implemented"],
+        [loader: "fabric",   minecraft: "1.21.11", status: "scaffolded"],
+        [loader: "fabric",   minecraft: "1.21.1",  status: "scaffolded"],
+        [loader: "fabric",   minecraft: "1.20.1",  status: "scaffolded"],
+        [loader: "neoforge", minecraft: "26.2",    status: "needs-platform-adapter"],
+        [loader: "neoforge", minecraft: "26.1",    status: "needs-platform-adapter"],
+        [loader: "neoforge", minecraft: "1.21.11", status: "needs-platform-adapter"],
+        [loader: "neoforge", minecraft: "1.21.1",  status: "needs-platform-adapter"],
+        [loader: "neoforge", minecraft: "1.20.1",  status: "needs-platform-adapter"],
+        [loader: "forge",    minecraft: "26.2",    status: "needs-platform-adapter"],
+        [loader: "forge",    minecraft: "26.1",    status: "needs-platform-adapter"],
+        [loader: "forge",    minecraft: "1.21.11", status: "needs-platform-adapter"],
+        [loader: "forge",    minecraft: "1.21.1",  status: "needs-platform-adapter"],
+        [loader: "forge",    minecraft: "1.20.1",  status: "needs-platform-adapter"],
+]
+
 base {
     archivesName = project.archives_base_name
 }
@@ -75,4 +93,24 @@ publishing {
             from components.java
         }
     }
+}
+
+tasks.register("conduitTargets") {
+    group = "conduit"
+    description = "Prints the Conduit loader/version build matrix."
+    doLast {
+        println "Conduit build targets:"
+        conduitTargets.each {
+            println " - ${it.loader.padRight(8)} ${it.minecraft.padRight(7)} ${it.status}"
+        }
+        println ""
+        println "Only Fabric ${minecraft_version} is currently wired to executable source sets."
+        println "Forge/NeoForge require platform entrypoints, metadata, and loader-specific adapters."
+    }
+}
+
+tasks.register("buildFabric26_1") {
+    group = "conduit"
+    description = "Builds the currently implemented Fabric 26.1 target."
+    dependsOn "build"
 }

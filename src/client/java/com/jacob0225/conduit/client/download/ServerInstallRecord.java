@@ -18,6 +18,7 @@ import java.io.Writer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -64,6 +65,8 @@ public class ServerInstallRecord {
 
     /** Mods recorded as installed for this server. */
     private List<RecordedMod> mods = new ArrayList<>();
+    /** Every jar Conduit has installed for this server, including superseded versions. */
+    private final Set<String> managedJarFilenames = new HashSet<>();
     private String serverName = "";
 
     /** One mod entry persisted in the record. */
@@ -111,6 +114,14 @@ public class ServerInstallRecord {
             JsonObject root = JsonParser.parseReader(r).getAsJsonObject();
             serverName = root.has("serverName") ? root.get("serverName").getAsString() : "";
             mods.clear();
+            managedJarFilenames.clear();
+            if (root.has("managedJarFilenames") && root.get("managedJarFilenames").isJsonArray()) {
+                for (JsonElement e : root.getAsJsonArray("managedJarFilenames")) {
+                    if (e.isJsonPrimitive() && !e.getAsString().isBlank()) {
+                        managedJarFilenames.add(e.getAsString());
+                    }
+                }
+            }
             if (root.has("mods") && root.get("mods").isJsonArray()) {
                 for (JsonElement e : root.getAsJsonArray("mods")) {
                     JsonObject m = e.getAsJsonObject();
@@ -122,6 +133,11 @@ public class ServerInstallRecord {
                             getStr(m, "expectedHash"),
                             getStr(m, "jarFilename")
                     ));
+                }
+            }
+            for (RecordedMod mod : mods) {
+                if (mod.jarFilename() != null && !mod.jarFilename().isBlank()) {
+                    managedJarFilenames.add(mod.jarFilename());
                 }
             }
         } catch (Exception e) {
@@ -147,12 +163,18 @@ public class ServerInstallRecord {
                     m.hashAlgorithm(), m.expectedHash(),
                     jarFilenames.getOrDefault(m.modId(), "")));
         }
+        for (String filename : jarFilenames.values()) {
+            if (filename != null && !filename.isBlank()) managedJarFilenames.add(filename);
+        }
 
         try {
             Files.createDirectories(file.getParent());
             JsonObject root = new JsonObject();
             root.addProperty("serverName", this.serverName);
             root.addProperty("installedAt", System.currentTimeMillis());
+            JsonArray managed = new JsonArray();
+            managedJarFilenames.stream().sorted().forEach(managed::add);
+            root.add("managedJarFilenames", managed);
             JsonArray arr = new JsonArray();
             for (RecordedMod m : this.mods) {
                 JsonObject o = new JsonObject();
@@ -248,6 +270,14 @@ public class ServerInstallRecord {
             }
         }
         return names;
+    }
+
+    /**
+     * Every jar Conduit has ever placed in this server's mod set. Superseded
+     * jars are retained here so they can still be stashed during a server swap.
+     */
+    public Set<String> managedJarFilenames() {
+        return Set.copyOf(managedJarFilenames);
     }
 
     /** The opaque key for this server (used to namespace the stash dir). */

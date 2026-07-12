@@ -1,5 +1,6 @@
 package com.jacob0225.conduit.client.ui;
 
+import com.jacob0225.conduit.client.config.ClientConfig;
 import com.jacob0225.conduit.client.network.ConduitJoinInterceptor;
 import com.jacob0225.conduit.client.util.InstanceRestarter;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -10,40 +11,36 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Confirmation screen shown when the player is joining a server whose mods are
- * all installed but not currently active — i.e. switching from another server's
- * mod set. Fabric loads every jar in {@code mods/} at startup, so the target
- * server's jars must be swapped in (from the stash) and the instance restarted
- * before the join will work.
- *
- * <p>The stash reconcile has already happened by the time this screen shows; the
- * player just confirms the restart. "Join Anyway" skips the restart and connects
- * with the current (wrong) mod set — they'll likely get disconnected, but it's
- * their choice.
+ * Confirmation screen shown when the player is switching to a server whose
+ * previously installed mod set has been restored from the Conduit stash.
  */
 public class ModSwitchScreen extends Screen {
 
     private static final Logger LOGGER = LoggerFactory.getLogger("Conduit/Switch");
 
-    private static final int COL_WHITE  = 0xFFFFFFFF;
-    private static final int COL_GREY   = 0xFFAAAAAA;
-    private static final int COL_YELLOW = 0xFFFFCC00;
-    private static final int COL_GREEN  = 0xFF55FF55;
-    private static final int PANEL_COLOR = 0xCC000000;
+    private static final int COL_WHITE = 0xFFFFFFFF;
+    private static final int COL_MUTED = 0xFFB7C1CC;
+    private static final int COL_GREEN = 0xFF65D887;
+    private static final int COL_YELLOW = 0xFFFFD166;
+    private static final int COL_BORDER = 0x55FFFFFF;
 
+    private final ClientConfig config = ClientConfig.get();
+    private final ClientConfig.Theme theme = config.theme();
     private final String serverName;
     private final Screen parent;
 
     public ModSwitchScreen(String serverName, Screen parent) {
-        super(Component.literal("Conduit — Server Switch"));
+        super(Component.literal("Conduit - Server Switch"));
         this.serverName = serverName != null ? serverName : "this server";
         this.parent = parent;
     }
 
     @Override
     protected void init() {
-        int cx = this.width / 2;
-        int by = this.height - 36;
+        int panelWidth = Math.min(this.width - 28, 500);
+        int left = this.width / 2 - panelWidth / 2;
+        int by = this.height / 2 + 76;
+        int buttonWidth = Math.min(150, (panelWidth - 58) / 2);
 
         addRenderableWidget(Button.builder(
                 Component.literal("Restart & Join"),
@@ -51,35 +48,48 @@ public class ModSwitchScreen extends Screen {
                     LOGGER.info("Player confirmed restart for server switch to '{}'", serverName);
                     InstanceRestarter.restart();
                 }
-        ).bounds(cx - 154, by, 150, 20).build());
+        ).bounds(left + 24, by, buttonWidth, 20).build());
 
         addRenderableWidget(Button.builder(
                 Component.literal("Join Anyway"),
                 btn -> {
-                    // Bypass and let the current (possibly wrong) mod set stand.
-                    LOGGER.info("Player chose Join Anyway for '{}' — skipping swap restart", serverName);
+                    LOGGER.info("Player chose Join Anyway for '{}' - skipping swap restart", serverName);
                     ConduitJoinInterceptor.bypassNextCheck();
                     this.onClose();
                 }
-        ).bounds(cx + 4, by, 150, 20).build());
+        ).bounds(left + panelWidth - 24 - buttonWidth, by, buttonWidth, 20).build());
     }
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor g, int mx, int my, float delta) {
-        g.fill(0, 0, this.width, this.height, PANEL_COLOR);
+        if (config.dimBackground()) {
+            g.fill(0, 0, this.width, this.height, 0xB0000000);
+        } else {
+            g.fill(0, 0, this.width, this.height, theme.background());
+        }
+
+        int width = Math.min(this.width - 28, 500);
+        int height = 220;
+        int left = this.width / 2 - width / 2;
+        int top = this.height / 2 - height / 2;
+        int right = left + width;
+        int bottom = top + height;
+
+        drawPanel(g, left, top, right, bottom);
 
         int cx = this.width / 2;
-        int y  = this.height / 2 - 50;
-
-        drawCentered(g, "§lSwitching to " + serverName, cx, y, COL_WHITE);
+        int y = top + 22;
+        drawCentered(g, "CONDUIT MOD SYNC", cx, y, theme.accentSoft());
+        y += 38;
+        drawCentered(g, "Switching to " + serverName, cx, y, COL_WHITE);
         y += 18;
-        drawCentered(g, "This server needs a different mod set than the one", cx, y, COL_GREY);
-        y += 12;
-        drawCentered(g, "currently loaded. Conduit has swapped the mods for you.", cx, y, COL_GREY);
-        y += 16;
-        drawCentered(g, "Click Restart & Join to reload the game with the new mods.", cx, y, COL_YELLOW);
-        y += 12;
+        drawCentered(g, "Conduit restored this server's saved mod set.", cx, y, COL_MUTED);
+        y += 14;
+        drawCentered(g, "Restart Minecraft so Fabric can load the new jars.", cx, y, COL_MUTED);
+        y += 22;
         drawCentered(g, "After restart, reconnect to " + serverName + ".", cx, y, COL_GREEN);
+        y += 16;
+        drawCentered(g, "Join Anyway may disconnect if the current loaded mods differ.", cx, y, COL_YELLOW);
 
         super.extractRenderState(g, mx, my, delta);
     }
@@ -87,6 +97,15 @@ public class ModSwitchScreen extends Screen {
     @Override
     public void onClose() {
         minecraft.setScreen(parent);
+    }
+
+    private void drawPanel(GuiGraphicsExtractor g, int left, int top, int right, int bottom) {
+        g.fill(left + 4, top + 5, right + 4, bottom + 5, 0x66000000);
+        g.fill(left, top, right, bottom, theme.panel());
+        g.fill(left, top, right, top + 2, theme.accent());
+        g.fill(left, bottom - 1, right, bottom, COL_BORDER);
+        g.fill(left, top, left + 1, bottom, COL_BORDER);
+        g.fill(right - 1, top, right, bottom, COL_BORDER);
     }
 
     private void drawCentered(GuiGraphicsExtractor g, String text, int cx, int y, int color) {

@@ -1,0 +1,103 @@
+# Conduit Guide
+
+Conduit keeps every configuration file under config/conduit/.
+
+## Client setup
+
+Install Conduit in the client's mods folder. On first launch it creates:
+
+~~~
+config/conduit/
+  client.json
+  servers/
+~~~
+
+Use the gear button labeled CONDUIT on the title screen to change the UI theme
+and download behavior. The same values can be edited while Minecraft is closed
+in config/conduit/client.json.
+
+compactDownloadUi makes the download dialog even shorter. autoStartDownloads
+starts required downloads immediately after the manifest is checked. Keep it
+off when players should review each server first.
+
+curseForgeApiKey is optional. It lets Conduit fall back to CurseForge when a
+mod is not available from Modrinth. Do not share this key publicly.
+
+## Server setup
+
+Install Conduit on the server and start it once. It creates:
+
+~~~
+config/conduit/
+  server.properties
+  manifest.json
+~~~
+
+Edit manifest.json, then restart the server. The generated template uses the
+simple schema: each entry is a Modrinth slug and whether it is required.
+Conduit resolves the matching version and hash while the server starts.
+
+~~~json
+{
+  "schemaVersion": 2,
+  "serverName": "Example Server",
+  "mods": [
+    { "slug": "sodium", "required": true },
+    { "slug": "iris", "required": false }
+  ]
+}
+~~~
+
+server.properties controls the HTTP endpoint clients contact before joining:
+
+~~~properties
+enabled=true
+bindAddress=0.0.0.0
+httpPort=25566
+workerThreads=4
+logRequests=false
+diagnosticsEnabled=true
+~~~
+
+Forward httpPort in addition to the normal Minecraft server port. Leave
+bindAddress=0.0.0.0 for direct public hosting. Use 127.0.0.1 only when a
+reverse proxy on the same machine exposes the endpoint.
+
+With diagnostics enabled, opening http://your-server:25566/ returns a small
+status response. The manifest is available at /manifest.json.
+
+## Updating a mod list
+
+1. Stop the server.
+2. Update config/conduit/manifest.json.
+3. Start the server and check the log for the number of served mods.
+4. Have clients reconnect. They will be shown the compact Conduit download
+   screen before Minecraft opens the game connection.
+
+## Exact Conduit mod sets
+
+Conduit keeps a history of every jar it installs for each server. When switching
+servers, it moves every Conduit-managed jar that is absent from the destination
+server's current record into that server's stash, then restores only the
+destination jars. For example, joining a server with voice chat and then one
+with Create stashes the voice-chat jar before restart.
+
+Conduit does not move jars you installed manually. This keeps the swap safe,
+but server manifests must include every Conduit-managed mod they require.
+
+## Forge versions
+
+The forge directory contains server-ready Forge projects for Minecraft 1.20.1,
+1.21.1, 1.21.11, 26.1, and 26.2. From the forge directory, build one target:
+
+~~~text
+.\build-forge.ps1 forge-1.20.1
+~~~
+
+Replace forge-1.20.1 with the target name for the desired Minecraft version.
+The resulting jar is written to that target's build/libs folder.
+
+Each Forge jar uses the shared Conduit manifest, validation, server config, and
+HTTP endpoint. Forge client-side pre-join download interception is not ported
+yet; the current download UI and title-screen settings button remain Fabric
+client features.
