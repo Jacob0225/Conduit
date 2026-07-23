@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "manifestVersion": 1,
+  "serverName": "Jacob's Silly Server",
+  "mods": [
+    {
+      "modId": "sodium",
+      "displayName": "Sodium",
+      "requiredVersion": "REPLACE_WITH_1.20.1_MOD_VERSION",
+      "required": true,
+      "modrinthProjectId": "AANobbMI",
+      "curseforgeProjectId": "394468",
+      "hashAlgorithm": "SHA-512",
+      "expectedHash": "REPLACE_WITH_ACTUAL_SHA512_HASH_OF_THE_JAR_FILE"
+    },
+    {
+      "modId": "iris",
+      "displayName": "Iris Shaders",
+      "requiredVersion": "REPLACE_WITH_1.20.1_MOD_VERSION",
+      "required": false,
+      "modrinthProjectId": "YL57xq9U",
+      "curseforgeProjectId": "455508",
+      "hashAlgorithm": "SHA-512",
+      "expectedHash": "REPLACE_WITH_ACTUAL_SHA512_HASH_OF_THE_JAR_FILE"
+    }
+  ]
+}

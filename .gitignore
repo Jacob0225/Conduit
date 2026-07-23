@@ -1,0 +1,78 @@
+# Gradle caches and build output
+.gradle/
+build/
+out/
+classes/
+.cache/
+
+# Compiled and packaged artifacts
+*.class
+*.jar
+*.war
+*.zip
+*.tar
+*.tar.gz
+
+# Gradle wrapper JARs are source-controlled
+!gradle/wrapper/gradle-wrapper.jar
+!**/gradle/wrapper/gradle-wrapper.jar
+
+# Minecraft development/runtime data
+run/
+runs/
+logs/
+crash-reports/
+debug/
+world/
+world_nether/
+world_the_end/
+eula.txt
+server.properties
+usercache.json
+usernamecache.json
+ops.json
+whitelist.json
+banned-players.json
+banned-ips.json
+
+# Generated data cache (keep generated resources themselves)
+src/generated/resources/.cache/
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Eclipse
+.settings/
+.classpath
+.project
+*.launch
+bin/
+
+# Visual Studio Code
+.vscode/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+local.properties
+*.local.properties
+
+# Operating-system files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# JVM diagnostics and temporary files
+hs_err_pid*.log
+hs_err_*.log
+replay_pid*.log
+replay_*.log
+*.hprof
+*.jfr
+*.tmp
+*.swp
+*~

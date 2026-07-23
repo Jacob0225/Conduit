@@ -1,0 +1,41 @@
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+    id 'net.neoforged.moddev.legacyforge' version '2.0.91'
+}
+
+version = project.mod_version
+group = project.maven_group
+base { archivesName = project.archives_base_name }
+java.toolchain.languageVersion = JavaLanguageVersion.of(17)
+
+sourceSets.main {
+    java.srcDir 'src/client/java'
+    resources.srcDir 'src/client/resources'
+}
+
+legacyForge {
+    version = "${project.minecraft_version}-${project.forge_version}"
+    runs {
+        client { client() }
+        server { server(); programArgument '--nogui' }
+    }
+    mods { conduit { sourceSet sourceSets.main } }
+}
+
+processResources {
+    inputs.properties(version: project.version, minecraft_version_range: project.minecraft_version_range,
+            forge_version_range: project.forge_version_range, loader_version_range: project.loader_version_range)
+    filesMatching('META-INF/mods.toml') {
+        expand(version: project.version, minecraft_version_range: project.minecraft_version_range,
+                forge_version_range: project.forge_version_range, loader_version_range: project.loader_version_range)
+    }
+}
+
+tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8'; options.release = 17 }
+java { withSourcesJar() }
+jar {
+    manifest.attributes('MixinConfigs': 'conduit.client.mixins.json')
+    from('LICENSE') { rename { "${it}_${project.archives_base_name}" } }
+}
+publishing { publications { create('mavenJava', MavenPublication) { from components.java } } }
