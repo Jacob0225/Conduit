@@ -20,9 +20,6 @@ compactDownloadUi makes the download dialog even shorter. autoStartDownloads
 starts required downloads immediately after the manifest is checked. Keep it
 off when players should review each server first.
 
-curseForgeApiKey is optional. It lets Conduit fall back to CurseForge when a
-mod is not available from Modrinth. Do not share this key publicly.
-
 ## Server setup
 
 Install Conduit on the server and start it once. It creates:

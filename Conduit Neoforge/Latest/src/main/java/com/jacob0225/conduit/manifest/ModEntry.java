@@ -17,8 +17,7 @@ public record ModEntry(
         String displayName,
         String requiredVersion,
         boolean required,
-        String modrinthProjectId,   // may be empty string
-        String curseforgeProjectId, // may be empty string
+        String modrinthProjectId,
         String hashAlgorithm,
         String expectedHash         // lowercase hex
 ) {
@@ -29,13 +28,11 @@ public record ModEntry(
         InputValidator.requireSafeString("displayName", displayName);
         InputValidator.requireVersion(requiredVersion);
         InputValidator.requireModrinthId(modrinthProjectId);
-        InputValidator.requireCurseForgeId(curseforgeProjectId);
         InputValidator.requireHashAlgorithm(hashAlgorithm);
         InputValidator.requireHash(hashAlgorithm, expectedHash);
 
-        if (modrinthProjectId.isEmpty() && curseforgeProjectId.isEmpty())
-            throw new SecurityException(
-                    "Mod '" + modId + "' must have at least one platform ID");
+        if (modrinthProjectId.isEmpty())
+            throw new SecurityException("Mod '" + modId + "' must have a Modrinth project ID");
     }
 
     // ── Network serialization ─────────────────────────────────────────────────
@@ -46,7 +43,6 @@ public record ModEntry(
         buf.writeUtf(requiredVersion);
         buf.writeBoolean(required);
         buf.writeUtf(modrinthProjectId);
-        buf.writeUtf(curseforgeProjectId);
         buf.writeUtf(hashAlgorithm);
         buf.writeUtf(expectedHash);
     }
@@ -62,14 +58,13 @@ public record ModEntry(
         String requiredVersion   = buf.readUtf(64);
         boolean required         = buf.readBoolean();
         String modrinthId        = buf.readUtf(16);
-        String curseforgeId      = buf.readUtf(16);
         String hashAlgorithm     = buf.readUtf(16);
         String expectedHash      = buf.readUtf(256);
 
         // Constructor validates everything — will throw SecurityException on bad data
         return new ModEntry(
                 modId, displayName, requiredVersion, required,
-                modrinthId, curseforgeId, hashAlgorithm, expectedHash
+                modrinthId, hashAlgorithm, expectedHash
         );
     }
 }

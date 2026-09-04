@@ -9,7 +9,6 @@
       "requiredVersion": "0.6.0+mc26.1",
       "required": true,
       "modrinthProjectId": "AANobbMI",
-      "curseforgeProjectId": "394468",
       "hashAlgorithm": "SHA-512",
       "expectedHash": "REPLACE_WITH_ACTUAL_SHA512_HASH_OF_THE_JAR_FILE"
     },
@@ -19,7 +18,6 @@
       "requiredVersion": "1.8.0+mc26.1",
       "required": false,
       "modrinthProjectId": "YL57xq9U",
-      "curseforgeProjectId": "455508",
       "hashAlgorithm": "SHA-512",
       "expectedHash": "REPLACE_WITH_ACTUAL_SHA512_HASH_OF_THE_JAR_FILE"
     }

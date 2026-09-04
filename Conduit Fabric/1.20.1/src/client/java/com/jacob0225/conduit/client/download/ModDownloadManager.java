@@ -20,7 +20,7 @@ import java.util.List;
 /**
  * Orchestrates the full download pipeline for a list of mod entries:
  *
- * 1. Query Modrinth → if unavailable, query CurseForge
+ * 1. Query Modrinth for the exact manifest version
  * 2. Download to staging directory ({@code .minecraft/conduit-staging/})
  * 3. Verify SHA-512 hash against BOTH API-reported and server-reported hashes
  * 4. Move verified file to managed directory ({@code .minecraft/mods/})
@@ -56,7 +56,6 @@ public class ModDownloadManager {
     }
 
     private final ModrinthClient modrinthClient;
-    private final CurseForgeClient curseForgeClient; // may be null if no API key configured
     private final DependencyResolver dependencyResolver;
     private final HttpClient http;
     private final Path managedDir;
@@ -64,11 +63,9 @@ public class ModDownloadManager {
 
     public ModDownloadManager(
             ModrinthClient modrinthClient,
-            CurseForgeClient curseForgeClient,
             DependencyResolver dependencyResolver
     ) {
         this.modrinthClient      = modrinthClient;
-        this.curseForgeClient    = curseForgeClient;
         this.dependencyResolver  = dependencyResolver;
         this.http = HttpClient.newBuilder()
                 .followRedirects(HttpClient.Redirect.NORMAL)
@@ -135,32 +132,25 @@ public class ModDownloadManager {
     private OneResult downloadOne(ModEntry entry, ProgressListener listener) {
         LOGGER.info("Downloading {} {} ...", entry.modId(), entry.requiredVersion());
 
-        // Step 1: Resolve via Modrinth (primary)
+        // Step 1: Resolve via Modrinth
         ModrinthClient.VersionInfo modrinthInfo = null;
         if (!entry.modrinthProjectId().isEmpty()) {
             modrinthInfo = modrinthClient.resolve(entry.modrinthProjectId(), entry.requiredVersion())
                     .orElse(null);
         }
 
-        // Step 2: Fallback to CurseForge
-        CurseForgeClient.VersionInfo curseInfo = null;
-        if (modrinthInfo == null && curseForgeClient != null && !entry.curseforgeProjectId().isEmpty()) {
-            curseInfo = curseForgeClient.resolve(entry.curseforgeProjectId(), entry.requiredVersion())
-                    .orElse(null);
-        }
-
-        if (modrinthInfo == null && curseInfo == null) {
+        if (modrinthInfo == null) {
             String reason = "Could not resolve " + entry.modId() + " " + entry.requiredVersion()
-                    + " from Modrinth or CurseForge";
+                    + " from Modrinth";
             LOGGER.error(reason);
             listener.onError(entry.modId(), reason);
             return new OneResult(false, null);
         }
 
         // Step 3: Download to staging
-        String downloadUrl = modrinthInfo != null ? modrinthInfo.downloadUrl() : curseInfo.downloadUrl();
-        String apiHash     = modrinthInfo != null ? modrinthInfo.sha512() : null; // CF only has SHA-1
-        String filename    = modrinthInfo != null ? modrinthInfo.filename() : curseInfo.filename();
+        String downloadUrl = modrinthInfo.downloadUrl();
+        String apiHash     = modrinthInfo.sha512();
+        String filename    = modrinthInfo.filename();
 
         // Skip if the file is already present in the mods folder (e.g. from a
         // previous install attempt this session). Don't re-download or delete it.
@@ -184,14 +174,7 @@ public class ModDownloadManager {
 
         // Step 4: Hash verification
         try {
-            if (apiHash != null) {
-                // Both API hash and server hash must agree
-                HashVerifier.verifyBoth(stagingFile, entry.hashAlgorithm(), apiHash, entry.expectedHash());
-            } else {
-                // CurseForge fallback: only verify server-provided hash
-                HashVerifier.verify(stagingFile, entry.hashAlgorithm(), entry.expectedHash());
-                LOGGER.warn("CurseForge fallback for {} — only server hash verified (no API SHA-512)", entry.modId());
-            }
+            HashVerifier.verifyBoth(stagingFile, entry.hashAlgorithm(), apiHash, entry.expectedHash());
         } catch (HashVerifier.VerificationException e) {
             LOGGER.error("HASH MISMATCH for {}: {}", entry.modId(), e.getMessage());
             listener.onError(entry.modId(), "Hash verification failed — file rejected");
@@ -219,9 +202,7 @@ public class ModDownloadManager {
 
     private void downloadFile(String url, Path destination) throws IOException {
         // Final URL validation — only allow known CDN origins
-        if (!url.startsWith("https://cdn.modrinth.com/") &&
-            !url.startsWith("https://mediafilez.forgecdn.net/") &&
-            !url.startsWith("https://edge.forgecdn.net/")) {
+        if (!url.startsWith("https://cdn.modrinth.com/")) {
             throw new IOException("Refused to download from unknown origin: " + url);
         }
 

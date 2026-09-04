@@ -20,8 +20,7 @@ authority on what or where to download.
 │        └── ModManifest (GSON)    │        ├── ManifestVerifier   │
 │                                  │        ├── InstalledModIndex  │
 │  ServerPlayNetworking            │        ├── ModDownloadManager │
-│   └── S2C: ManifestPacket ──────►│        │    ├── ModrinthClient│
-│                                  │        │    └── CurseForgeClient
+│   └── S2C: ManifestPacket ──────►│        │    └── ModrinthClient│
 │                                  │        ├── HashVerifier       │
 │                                  │        ├── DependencyResolver │
 │                                  │        └── ReviewScreen (GUI) │
@@ -33,11 +32,11 @@ authority on what or where to download.
 | Component | Side | Role |
 |---|---|---|
 | `ServerManifestProvider` | Server | Reads `conduit-manifest.json`; builds and signs the `ManifestPacket` |
-| `ManifestPacket` | Shared | S2C packet — contains only mod IDs, versions, hashes, and platform IDs |
+| `ManifestPacket` | Shared | S2C packet — contains only mod IDs, versions, hashes, and Modrinth IDs |
 | `ClientManifestHandler` | Client | Receives packet; validates structure; dispatches to verifier |
 | `InstalledModIndex` | Client | Scans the mods folder; builds a map of modId → version |
 | `ManifestVerifier` | Client | Diffs manifest vs installed; produces lists of missing/mismatched |
-| `ModDownloadManager` | Client | Queries Modrinth then CurseForge; downloads to staging dir; verifies hash |
+| `ModDownloadManager` | Client | Queries Modrinth, downloads to staging, and verifies the hash |
 | `HashVerifier` | Client | SHA-512 / SHA-256 verification before any file is moved to mods/ |
 | `DependencyResolver` | Client | Resolves transitive deps via Modrinth dependency API |
 | `ReviewScreen` | Client | Shows pending downloads to the user before anything is installed |
@@ -89,7 +88,6 @@ per mod:
   [String] requiredVersion      (semver string)
   [boolean] required
   [String] modrinthProjectId    (may be empty string if absent)
-  [String] curseforgeProjectId  (may be empty string if absent)
   [String] hashAlgorithm        ("SHA-512" or "SHA-256")
   [String] expectedHash         (lowercase hex, 128 or 64 chars)
 ```
@@ -118,7 +116,6 @@ per mod:
       "requiredVersion": "0.6.0",
       "required": true,
       "modrinthProjectId": "AANobbMI",
-      "curseforgeProjectId": "394468",
       "hashAlgorithm": "SHA-512",
       "expectedHash": "a3f1...e9b2"
     },
@@ -128,7 +125,6 @@ per mod:
       "requiredVersion": "1.8.0",
       "required": false,
       "modrinthProjectId": "YL57xq9U",
-      "curseforgeProjectId": "455508",
       "hashAlgorithm": "SHA-512",
       "expectedHash": "c8d4...1af3"
     }
@@ -140,7 +136,7 @@ per mod:
 
 - `schemaVersion` must equal 1 (or the client rejects)
 - `expectedHash` must match `^[0-9a-f]{64}$` (SHA-256) or `^[0-9a-f]{128}$` (SHA-512)
-- `modrinthProjectId` must match `^[A-Za-z0-9]{8}$` or be empty
+- `modrinthProjectId` must match `^[A-Za-z0-9]{8}$`
 - No field may contain a URL or path separator
 - All string fields are trimmed and length-limited (256 chars max)
 
@@ -195,16 +191,12 @@ for each ModEntry:
            ?game_versions=["26.1"]&loaders=["fabric"]
        → pick version matching requiredVersion
        → extract files[0].url and files[0].hashes.sha512
-  2. If Modrinth fails → try CurseForge:
-       GET https://api.curseforge.com/v1/mods/{curseforgeProjectId}/files
-       → pick matching file
-       → extract downloadUrl and hashes[sha512]
-  3. If both fail → mark as unavailable, warn user
+  2. If Modrinth fails → mark as unavailable and warn the user
 
-  4. Download file to:
+  3. Download file to:
        .minecraft/conduit-staging/{modId}-{version}.jar.tmp
 
-  5. HashVerifier.verify(file, sha512):
+  4. HashVerifier.verify(file, sha512):
        - compute SHA-512 of downloaded bytes
        - compare to API-reported hash
        - compare to server-reported hash (must match both)
@@ -299,7 +291,6 @@ src/
         │   ├── ManifestVerifier.java           (diff logic)
         │   ├── ModDownloadManager.java         (orchestrates downloads)
         │   ├── ModrinthClient.java             (Modrinth API calls)
-        │   ├── CurseForgeClient.java           (CurseForge API calls)
         │   ├── HashVerifier.java               (SHA-512/256 verification)
         │   └── DependencyResolver.java         (BFS dep resolution)
         └── ui/

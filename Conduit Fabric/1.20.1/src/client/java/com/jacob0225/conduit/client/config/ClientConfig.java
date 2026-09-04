@@ -31,7 +31,6 @@ public final class ClientConfig {
     private boolean showDownloadDetails = false;
     private boolean dimBackground = true;
     private boolean showOptionalMods = true;
-    private String curseForgeApiKey = "";
 
     public static ClientConfig get() {
         ClientConfig current = instance;
@@ -63,7 +62,6 @@ public final class ClientConfig {
                 config.showDownloadDetails = bool(root, "showDownloadDetails", config.showDownloadDetails);
                 config.dimBackground = bool(root, "dimBackground", config.dimBackground);
                 config.showOptionalMods = bool(root, "showOptionalMods", config.showOptionalMods);
-                config.curseForgeApiKey = string(root, "curseForgeApiKey", config.curseForgeApiKey).trim();
                 config.normalize();
                 instance = config;
                 return config;
@@ -136,14 +134,6 @@ public final class ClientConfig {
         this.showOptionalMods = showOptionalMods;
     }
 
-    public String curseForgeApiKey() {
-        return curseForgeApiKey;
-    }
-
-    public boolean hasCurseForgeApiKey() {
-        return !curseForgeApiKey.isBlank();
-    }
-
     private void save(Path path) throws IOException {
         JsonObject root = new JsonObject();
         root.addProperty("_comment", "theme: conduit, emerald, amethyst, amber, monochrome");
@@ -153,7 +143,6 @@ public final class ClientConfig {
         root.addProperty("showDownloadDetails", showDownloadDetails);
         root.addProperty("dimBackground", dimBackground);
         root.addProperty("showOptionalMods", showOptionalMods);
-        root.addProperty("curseForgeApiKey", curseForgeApiKey);
 
         try (Writer writer = Files.newBufferedWriter(path)) {
             writer.write(GSON.toJson(root));

@@ -22,7 +22,6 @@ public class ServerManifest {
         public String requiredVersion;
         public boolean required;
         public String modrinthProjectId;
-        public String curseforgeProjectId;
         public String hashAlgorithm;
         public String expectedHash;
     }

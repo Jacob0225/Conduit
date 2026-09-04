@@ -28,10 +28,6 @@ public final class InputValidator {
     private static final Pattern MODRINTH_SLUG_OR_ID =
             Pattern.compile("^(?:[a-z0-9_\\-]{1,64}|[A-Za-z0-9]{8})$");
 
-    /** CurseForge project IDs are purely numeric (up to 10 digits). */
-    private static final Pattern CURSEFORGE_ID =
-            Pattern.compile("^[0-9]{1,10}$");
-
     /** SHA-256 hash: exactly 64 lowercase hex chars. */
     private static final Pattern SHA256 =
             Pattern.compile("^[0-9a-f]{64}$");
@@ -88,13 +84,6 @@ public final class InputValidator {
         if (value == null || value.isEmpty()) return ""; // optional
         if (!MODRINTH_SLUG_OR_ID.matcher(value).matches())
             throw new SecurityException("Invalid Modrinth slug or project ID: " + value);
-        return value;
-    }
-
-    public static String requireCurseForgeId(String value) {
-        if (value == null || value.isEmpty()) return ""; // optional
-        if (!CURSEFORGE_ID.matcher(value).matches())
-            throw new SecurityException("Invalid CurseForge project ID: " + value);
         return value;
     }
 

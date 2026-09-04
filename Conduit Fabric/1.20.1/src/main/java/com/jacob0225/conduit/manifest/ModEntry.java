@@ -9,7 +9,6 @@ public record ModEntry(
         String requiredVersion,
         boolean required,
         String modrinthProjectId,
-        String curseforgeProjectId,
         String hashAlgorithm,
         String expectedHash
 ) {
@@ -18,13 +17,11 @@ public record ModEntry(
         InputValidator.requireSafeString("displayName", displayName);
         InputValidator.requireVersion(requiredVersion);
         InputValidator.requireModrinthId(modrinthProjectId);
-        InputValidator.requireCurseForgeId(curseforgeProjectId);
         InputValidator.requireHashAlgorithm(hashAlgorithm);
         InputValidator.requireHash(hashAlgorithm, expectedHash);
 
-        if (modrinthProjectId.isEmpty() && curseforgeProjectId.isEmpty()) {
-            throw new SecurityException(
-                    "Mod '" + modId + "' must have at least one platform ID");
+        if (modrinthProjectId.isEmpty()) {
+            throw new SecurityException("Mod '" + modId + "' must have a Modrinth project ID");
         }
     }
 }

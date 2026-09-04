@@ -16,13 +16,9 @@ already exist.
   "autoStartDownloads": false,
   "showDownloadDetails": false,
   "dimBackground": true,
-  "showOptionalMods": true,
-  "curseForgeApiKey": ""
+  "showOptionalMods": true
 }
 ```
-
-`curseForgeApiKey` enables CurseForge as a fallback source when a required mod
-cannot be resolved from Modrinth.
 
 The same settings are available in-game from the title screen Conduit button.
 

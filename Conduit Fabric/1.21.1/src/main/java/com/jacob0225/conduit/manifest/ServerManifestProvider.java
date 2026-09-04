@@ -100,8 +100,7 @@ public class ServerManifestProvider {
                         j.displayName,
                         j.requiredVersion,
                         j.required,
-                        j.modrinthProjectId   != null ? j.modrinthProjectId   : "",
-                        j.curseforgeProjectId != null ? j.curseforgeProjectId : "",
+                        j.modrinthProjectId != null ? j.modrinthProjectId : "",
                         j.hashAlgorithm,
                         j.expectedHash
                 ));
@@ -147,7 +146,6 @@ public class ServerManifestProvider {
                             p.versionNumber(),
                             simple.required,
                             p.modrinthProjectId(),
-                            "",           // CurseForge not used in schema 2
                             "SHA-512",
                             p.sha512()
                     ));

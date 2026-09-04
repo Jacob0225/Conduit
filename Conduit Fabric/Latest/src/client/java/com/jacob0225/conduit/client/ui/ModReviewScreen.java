@@ -1,7 +1,6 @@
 package com.jacob0225.conduit.client.ui;
 
 import com.jacob0225.conduit.client.config.ClientConfig;
-import com.jacob0225.conduit.client.download.CurseForgeClient;
 import com.jacob0225.conduit.client.download.DependencyResolver;
 import com.jacob0225.conduit.client.download.InstalledModIndex;
 import com.jacob0225.conduit.client.download.ModDownloadManager;
@@ -392,12 +391,9 @@ public class ModReviewScreen extends Screen {
                 .orElse("26.1");
 
         ModrinthClient modrinth = new ModrinthClient(mcVersion);
-        CurseForgeClient curseForge = config.hasCurseForgeApiKey()
-                ? new CurseForgeClient(config.curseForgeApiKey(), mcVersion)
-                : null;
         InstalledModIndex index = new InstalledModIndex();
         DependencyResolver deps = new DependencyResolver(index);
-        ModDownloadManager manager = new ModDownloadManager(modrinth, curseForge, deps);
+        ModDownloadManager manager = new ModDownloadManager(modrinth, deps);
 
         CompletableFuture.runAsync(() -> {
             try {

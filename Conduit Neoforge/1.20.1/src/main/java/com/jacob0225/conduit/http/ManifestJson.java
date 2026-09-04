@@ -32,7 +32,6 @@ import com.jacob0225.conduit.network.ManifestPayload;
  *       "requiredVersion": "0.6.13",
  *       "required": true,
  *       "modrinthProjectId": "AANobbMI",
- *       "curseforgeProjectId": "",
  *       "hashAlgorithm": "SHA-512",
  *       "expectedHash": "<lowercase hex>"
  *     }
@@ -61,7 +60,6 @@ public final class ManifestJson {
             o.addProperty("requiredVersion", m.requiredVersion());
             o.addProperty("required", m.required());
             o.addProperty("modrinthProjectId", m.modrinthProjectId());
-            o.addProperty("curseforgeProjectId", m.curseforgeProjectId());
             o.addProperty("hashAlgorithm", m.hashAlgorithm());
             o.addProperty("expectedHash", m.expectedHash());
             mods.add(o);
@@ -106,7 +104,6 @@ public final class ManifestJson {
                     getAsString(m, "requiredVersion"),
                     getAsBool(m, "required"),
                     getOptionalString(m, "modrinthProjectId"),
-                    getOptionalString(m, "curseforgeProjectId"),
                     getAsString(m, "hashAlgorithm"),
                     getAsString(m, "expectedHash")
             ));
