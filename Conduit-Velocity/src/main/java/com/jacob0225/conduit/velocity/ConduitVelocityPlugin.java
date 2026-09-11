@@ -8,6 +8,7 @@ import com.velocitypowered.api.event.connection.LoginEvent;
 import com.velocitypowered.api.event.connection.PreLoginEvent;
 import com.velocitypowered.api.event.player.ServerLoginPluginMessageEvent;
 import com.velocitypowered.api.event.proxy.ProxyInitializeEvent;
+import com.velocitypowered.api.event.proxy.ProxyPingEvent;
 import com.velocitypowered.api.plugin.Plugin;
 import com.velocitypowered.api.plugin.annotation.DataDirectory;
 import com.velocitypowered.api.proxy.LoginPhaseConnection;
@@ -81,6 +82,16 @@ public final class ConduitVelocityPlugin {
                 }
             }
         });
+    }
+
+    /** Advertise Conduit support during the normal server-list ping. */
+    @Subscribe
+    public void onProxyPing(ProxyPingEvent event) {
+        VelocityConfig current = config;
+        if (current == null || !current.enabled()) return;
+        Component description = event.getPing().getDescriptionComponent()
+                .append(Component.empty().insertion("conduit:server"));
+        event.setPing(event.getPing().asBuilder().description(description).build());
     }
 
     @Subscribe

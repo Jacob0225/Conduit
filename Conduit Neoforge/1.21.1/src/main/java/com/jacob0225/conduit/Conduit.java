@@ -8,6 +8,7 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.server.MinecraftServer;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
+import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.common.NeoForge;
@@ -27,12 +28,12 @@ public class Conduit {
     public static final int DEFAULT_HTTP_PORT = 25566;
     private final ConduitServerRuntime serverRuntime = new ConduitServerRuntime();
 
-    public Conduit(IEventBus modBus) {
+    public Conduit(IEventBus modBus, ModContainer modContainer) {
         modBus.addListener(this::registerPayloads);
         modBus.addListener(this::registerConfigurationTask);
         NeoForge.EVENT_BUS.addListener(this::onServerStarting);
         NeoForge.EVENT_BUS.addListener(this::onServerStopped);
-        if (FMLEnvironment.dist == Dist.CLIENT) ConduitClient.initialize();
+        if (FMLEnvironment.dist == Dist.CLIENT) ConduitClient.initialize(modContainer);
         LOGGER.info("Conduit NeoForge 1.1.0 initialized");
     }
 

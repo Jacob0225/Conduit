@@ -60,7 +60,7 @@ public final class ConduitJoinInterceptor {
                     LOGGER.info("Manifest satisfied; allowing the existing Minecraft login to finish");
                     return PortDiscovery.READY;
                 }
-                afterDisconnect = () -> Minecraft.getInstance().setScreen(
+                afterDisconnect = () -> Minecraft.getInstance().setScreenAndShow(
                         new ModSwitchScreen(payload.serverName(), current.parent()));
                 return PortDiscovery.NEEDS_SETUP;
             }
@@ -68,7 +68,7 @@ public final class ConduitJoinInterceptor {
             int required = (int) payload.mods().stream().filter(ModEntry::required).count();
             LOGGER.info("Manifest requires setup ({} required mod(s)); ending login before registry sync",
                     required);
-            afterDisconnect = () -> Minecraft.getInstance().setScreen(
+            afterDisconnect = () -> Minecraft.getInstance().setScreenAndShow(
                     new ModReviewScreen(payload, current.address(), current.serverData(), current.parent()));
             return PortDiscovery.NEEDS_SETUP;
         });

@@ -3,8 +3,11 @@ package com.jacob0225.conduit.client;
 import com.jacob0225.conduit.client.config.ClientConfig;
 import com.jacob0225.conduit.client.download.ServerInstallRecord;
 import com.jacob0225.conduit.client.network.ConduitJoinInterceptor;
+import com.jacob0225.conduit.client.ui.ConduitSettingsScreen;
 import com.jacob0225.conduit.network.PortDiscovery;
+import net.neoforged.fml.ModContainer;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 import org.slf4j.Logger;
@@ -16,9 +19,12 @@ import java.nio.file.Path;
 public final class ConduitClient {
     private static final Logger LOGGER = LoggerFactory.getLogger("Conduit/Client");
     private ConduitClient() {}
-    public static void initialize() {
+    public static void initialize(ModContainer modContainer) {
         ClientConfig.load();
         verifyInstallRecords();
+        IConfigScreenFactory configScreenFactory =
+                (container, parent) -> new ConduitSettingsScreen(parent);
+        modContainer.registerExtensionPoint(IConfigScreenFactory.class, configScreenFactory);
         NeoForge.EVENT_BUS.addListener((ClientTickEvent.Post event) -> ConduitJoinInterceptor.onClientTick());
         LOGGER.info("Conduit NeoForge client ready");
     }

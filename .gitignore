@@ -76,3 +76,10 @@ replay_*.log
 *.tmp
 *.swp
 *~
+
+# Generated Conduit server test matrix data
+testing/cache/
+testing/instances/
+testing/logs/
+__pycache__/
+*.pyc

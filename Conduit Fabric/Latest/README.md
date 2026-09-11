@@ -30,6 +30,6 @@ bind address, port, worker threads, optional request logging, and diagnostics.
 
 ## Loader support
 
-Fabric 26.1 remains the client implementation. Forge server builds are set up
+Fabric 26.1–26.2 remains the client implementation. Forge server builds are set up
 for 1.20.1, 1.21.1, 1.21.11, 26.1, and 26.2 in the forge directory. See
 GUIDE.md for commands and automatic login-handshake port discovery.

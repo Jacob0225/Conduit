@@ -3,9 +3,12 @@ package com.jacob0225.conduit.client;
 import com.jacob0225.conduit.client.config.ClientConfig;
 import com.jacob0225.conduit.client.download.ServerInstallRecord;
 import com.jacob0225.conduit.client.network.ConduitJoinInterceptor;
+import com.jacob0225.conduit.client.ui.ConduitSettingsScreen;
 import com.jacob0225.conduit.network.PortDiscovery;
+import net.minecraftforge.client.ConfigScreenHandler;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.fml.ModLoadingContext;
 import net.minecraftforge.network.NetworkEvent;
 import net.minecraftforge.network.simple.SimpleChannel;
 
@@ -20,6 +23,9 @@ public final class ConduitClient {
     public static void initialize() {
         ClientConfig.load();
         verifyInstallRecords();
+        ModLoadingContext.get().registerExtensionPoint(
+                ConfigScreenHandler.ConfigScreenFactory.class,
+                () -> new ConfigScreenHandler.ConfigScreenFactory(ConduitSettingsScreen::new));
         MinecraftForge.EVENT_BUS.addListener(ConduitClient::onClientTick);
     }
     public static void handleAdvertisement(PortDiscovery.Advertisement advertisement,

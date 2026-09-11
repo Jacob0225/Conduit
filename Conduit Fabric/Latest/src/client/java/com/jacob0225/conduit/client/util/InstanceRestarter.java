@@ -56,7 +56,7 @@ public final class InstanceRestarter {
 
         // Tear down this JVM either way.
         Minecraft mc = Minecraft.getInstance();
-        mc.setScreen(null);
+        mc.setScreenAndShow(null);
         mc.stop();
     }
 

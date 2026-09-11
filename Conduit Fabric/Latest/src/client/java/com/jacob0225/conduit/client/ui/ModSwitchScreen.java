@@ -1,6 +1,5 @@
 package com.jacob0225.conduit.client.ui;
 
-import com.jacob0225.conduit.client.config.ClientConfig;
 import com.jacob0225.conduit.client.network.ConduitJoinInterceptor;
 import com.jacob0225.conduit.client.util.InstanceRestarter;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -19,13 +18,11 @@ public class ModSwitchScreen extends Screen {
     private static final Logger LOGGER = LoggerFactory.getLogger("Conduit/Switch");
 
     private static final int COL_WHITE = 0xFFFFFFFF;
-    private static final int COL_MUTED = 0xFFB7C1CC;
-    private static final int COL_GREEN = 0xFF65D887;
-    private static final int COL_YELLOW = 0xFFFFD166;
-    private static final int COL_BORDER = 0x55FFFFFF;
+    private static final int COL_MUTED = 0xFFA0A0A0;
+    private static final int COL_GREEN = 0xFF55FF55;
+    private static final int COL_YELLOW = 0xFFFFFF55;
+    private static final int COL_OCEAN = 0xFF35B9E8;
 
-    private final ClientConfig config = ClientConfig.get();
-    private final ClientConfig.Theme theme = config.theme();
     private final String serverName;
     private final Screen parent;
 
@@ -62,30 +59,21 @@ public class ModSwitchScreen extends Screen {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor g, int mx, int my, float delta) {
-        if (config.dimBackground()) {
-            g.fill(0, 0, this.width, this.height, 0xB0000000);
-        } else {
-            g.fill(0, 0, this.width, this.height, theme.background());
-        }
+        if (parent != null) parent.extractRenderState(g, mx, my, delta);
 
         int width = Math.min(this.width - 28, 500);
         int height = 220;
-        int left = this.width / 2 - width / 2;
         int top = this.height / 2 - height / 2;
-        int right = left + width;
-        int bottom = top + height;
-
-        drawPanel(g, left, top, right, bottom);
 
         int cx = this.width / 2;
         int y = top + 22;
-        drawCentered(g, "CONDUIT MOD SYNC", cx, y, theme.accentSoft());
+        drawCentered(g, "CONDUIT MOD SYNC", cx, y, COL_OCEAN);
         y += 38;
         drawCentered(g, "Switching to " + serverName, cx, y, COL_WHITE);
         y += 18;
         drawCentered(g, "Conduit restored this server's saved mod set.", cx, y, COL_MUTED);
         y += 14;
-        drawCentered(g, "Restart Minecraft so Fabric can load the new jars.", cx, y, COL_MUTED);
+        drawCentered(g, "Restart Minecraft so your mod loader can load the new jars.", cx, y, COL_MUTED);
         y += 22;
         drawCentered(g, "After restart, reconnect to " + serverName + ".", cx, y, COL_GREEN);
         y += 16;
@@ -96,16 +84,7 @@ public class ModSwitchScreen extends Screen {
 
     @Override
     public void onClose() {
-        minecraft.setScreen(parent);
-    }
-
-    private void drawPanel(GuiGraphicsExtractor g, int left, int top, int right, int bottom) {
-        g.fill(left + 4, top + 5, right + 4, bottom + 5, 0x66000000);
-        g.fill(left, top, right, bottom, theme.panel());
-        g.fill(left, top, right, top + 2, theme.accent());
-        g.fill(left, bottom - 1, right, bottom, COL_BORDER);
-        g.fill(left, top, left + 1, bottom, COL_BORDER);
-        g.fill(right - 1, top, right, bottom, COL_BORDER);
+        minecraft.setScreenAndShow(parent);
     }
 
     private void drawCentered(GuiGraphicsExtractor g, String text, int cx, int y, int color) {

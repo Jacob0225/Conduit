@@ -1,0 +1,87 @@
+[
+  {
+    "id": "fabric-1.20.1",
+    "project": "Conduit Fabric/1.20.1",
+    "loader": "fabric",
+    "minecraft": "1.20.1",
+    "loaderVersion": "0.16.14",
+    "fabricApiVersion": "0.92.6+1.20.1",
+    "java": 17,
+    "buildJava": 21,
+    "minecraftPort": 25601,
+    "conduitPort": 30601
+  },
+  {
+    "id": "fabric-1.21.1",
+    "project": "Conduit Fabric/1.21.1",
+    "loader": "fabric",
+    "minecraft": "1.21.1",
+    "loaderVersion": "0.18.5",
+    "fabricApiVersion": "0.116.7+1.21.1",
+    "java": 21,
+    "minecraftPort": 25602,
+    "conduitPort": 30602
+  },
+  {
+    "id": "fabric-26.1",
+    "project": "Conduit Fabric/Latest",
+    "loader": "fabric",
+    "minecraft": "26.1",
+    "loaderVersion": "0.18.5",
+    "fabricApiVersion": "0.144.3+26.1",
+    "java": 25,
+    "minecraftPort": 25603,
+    "conduitPort": 30603
+  },
+  {
+    "id": "forge-1.20.1",
+    "project": "Conduit Neoforge/1.20.1",
+    "loader": "forge",
+    "minecraft": "1.20.1",
+    "loaderVersion": "47.4.10",
+    "java": 17,
+    "minecraftPort": 25604,
+    "conduitPort": 30604
+  },
+  {
+    "id": "neoforge-1.21.1",
+    "project": "Conduit Neoforge/1.21.1",
+    "loader": "neoforge",
+    "minecraft": "1.21.1",
+    "loaderVersion": "21.1.243",
+    "java": 21,
+    "minecraftPort": 25605,
+    "conduitPort": 30605
+  },
+  {
+    "id": "neoforge-26.1",
+    "project": "Conduit Neoforge/Latest",
+    "loader": "neoforge",
+    "minecraft": "26.1",
+    "loaderVersion": "26.1.0.19-beta",
+    "java": 25,
+    "minecraftPort": 25606,
+    "conduitPort": 30606
+  },
+  {
+    "id": "fabric-26.2",
+    "project": "Conduit Fabric/Latest",
+    "loader": "fabric",
+    "minecraft": "26.2",
+    "loaderVersion": "0.18.5",
+    "fabricApiVersion": "0.160.0+26.2",
+    "java": 25,
+    "minecraftPort": 25607,
+    "conduitPort": 30607
+  },
+  {
+    "id": "neoforge-26.2",
+    "project": "Conduit Neoforge/Latest",
+    "loader": "neoforge",
+    "minecraft": "26.2",
+    "loaderVersion": "26.2.0.82",
+    "java": 25,
+    "minecraftPort": 25608,
+    "conduitPort": 30608
+  }
+]

@@ -1,5 +1,6 @@
 package com.jacob0225.conduit.client.ui;
 
+import com.mojang.math.Axis;
 import com.jacob0225.conduit.client.config.ClientConfig;
 import com.jacob0225.conduit.client.download.DependencyResolver;
 import com.jacob0225.conduit.client.download.InstalledModIndex;
@@ -18,6 +19,8 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.client.multiplayer.resolver.ServerAddress;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.Util;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -32,21 +35,23 @@ import java.util.concurrent.CompletableFuture;
 public class ModReviewScreen extends Screen {
 
     private static final Logger LOGGER = LoggerFactory.getLogger("Conduit/UI");
+    private static final ResourceLocation CONDUIT_TEXTURE =
+            ResourceLocation.fromNamespaceAndPath("conduit", "textures/gui/conduit.png");
 
     private static final int COL_WHITE = 0xFFFFFFFF;
-    private static final int COL_MUTED = 0xFFB7C1CC;
-    private static final int COL_DIM = 0xFF768390;
-    private static final int COL_GREEN = 0xFF65D887;
-    private static final int COL_YELLOW = 0xFFFFD166;
-    private static final int COL_RED = 0xFFFF6B6B;
-    private static final int COL_ROW = 0x331D2734;
-    private static final int COL_ROW_ALT = 0x44232F3E;
-    private static final int COL_BORDER = 0x55FFFFFF;
+    private static final int COL_MUTED = 0xFFA0A0A0;
+    private static final int COL_DIM = 0xFF707070;
+    private static final int COL_GREEN = 0xFF55FF55;
+    private static final int COL_YELLOW = 0xFFFFFF55;
+    private static final int COL_RED = 0xFFFF5555;
+    private static final int COL_GOLD = 0xFFFFAA00;
+    private static final int COL_OCEAN = 0xFF35B9E8;
+    private static final int COL_ROW = 0xAA202020;
+    private static final int COL_ROW_ALT = 0xAA292929;
 
     private enum Phase { PROMPT, DOWNLOADING, DONE, ERROR }
 
     private final ClientConfig config = ClientConfig.get();
-    private final ClientConfig.Theme theme = config.theme();
     private final ManifestPayload payload;
     private final ServerAddress serverAddress;
     private final ServerData serverData;
@@ -66,6 +71,10 @@ public class ModReviewScreen extends Screen {
     private int failedCount = 0;
     private String activeModId = "";
     private boolean autoStarted = false;
+    private int scrollOffset = 0;
+    private int listTop = 0;
+    private int listBottom = 0;
+    private int visibleModRows = 0;
 
     public ModReviewScreen(ManifestPayload payload,
                            ServerAddress address, ServerData serverData, Screen parent) {
@@ -166,20 +175,12 @@ public class ModReviewScreen extends Screen {
 
     @Override
     public void render(GuiGraphics g, int mx, int my, float delta) {
-        if (config.dimBackground()) {
-            g.fill(0, 0, this.width, this.height, 0xB0000000);
-        } else {
-            g.fill(0, 0, this.width, this.height, theme.background());
-        }
+        if (parent != null) parent.render(g, mx, my, delta);
 
         int left = panelLeft();
         int top = panelTop();
         int right = panelRight();
         int bottom = panelBottom();
-        drawPanel(g, left, top, right, bottom);
-
-        int cx = this.width / 2;
-        drawHeader(g, cx, top + 12);
 
         if (phase == Phase.PROMPT) {
             renderPrompt(g, left, top, right);
@@ -188,7 +189,7 @@ public class ModReviewScreen extends Screen {
         }
 
         if (!footerText.isEmpty()) {
-            drawCentered(g, footerText, cx, bottom - 40, footerColor);
+            drawCentered(g, footerText, this.width / 2, bottom - 40, footerColor);
         }
 
         super.render(g, mx, my, delta);
@@ -204,9 +205,23 @@ public class ModReviewScreen extends Screen {
         return phase != Phase.DOWNLOADING;
     }
 
+    @Override
+    public boolean mouseScrolled(double mouseX, double mouseY,
+                                 double horizontalAmount, double verticalAmount) {
+        if (phase != Phase.PROMPT && mouseY >= listTop && mouseY < listBottom
+                && requiredMods.size() > visibleModRows && verticalAmount != 0.0D) {
+            int maxOffset = requiredMods.size() - visibleModRows;
+            scrollOffset = Math.max(0, Math.min(maxOffset,
+                    scrollOffset + (verticalAmount > 0.0D ? -1 : 1)));
+            return true;
+        }
+        return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
+    }
+
     private void renderPrompt(GuiGraphics g, int left, int top, int right) {
         int cx = this.width / 2;
-        int y = top + 48;
+        renderConduit(g, cx, top + 28, false);
+        int y = top + 58;
 
         drawCentered(g, payload.serverName(), cx, y, COL_WHITE);
         y += 18;
@@ -214,7 +229,7 @@ public class ModReviewScreen extends Screen {
         if (config.showOptionalMods() && optionalCount > 0) {
             summary += " + " + optionalCount + " optional";
         }
-        drawCentered(g, summary, cx, y, theme.accentSoft());
+        drawCentered(g, summary, cx, y, COL_GOLD);
         y += 20;
 
         drawCentered(g, "Download the missing mods for this server.", cx, y, COL_MUTED);
@@ -231,7 +246,8 @@ public class ModReviewScreen extends Screen {
 
     private void renderProgress(GuiGraphics g, int left, int top, int right, int bottom) {
         int cx = this.width / 2;
-        int y = top + 48;
+        renderConduit(g, cx, top + 26, phase == Phase.DOWNLOADING);
+        int y = top + 52;
         String title = switch (phase) {
             case DOWNLOADING -> "Installing verified mods";
             case DONE -> "Ready to restart";
@@ -241,8 +257,7 @@ public class ModReviewScreen extends Screen {
         drawCentered(g, title, cx, y, COL_WHITE);
         y += 16;
         drawCentered(g, payload.serverName(), cx, y, COL_MUTED);
-        y += 16;
-
+        y += 14;
         drawProgressBar(g, left + 24, y, right - 24, progressRatio());
         y += 16;
         String summary = finishedCount + "/" + requiredMods.size() + " complete";
@@ -250,22 +265,23 @@ public class ModReviewScreen extends Screen {
         drawCentered(g, summary, cx, y, failedCount > 0 ? COL_RED : COL_MUTED);
         y += 14;
 
-        if (config.showDownloadDetails()) {
-            renderModRows(g, left + 26, y, right - 26, bottom - 68);
-        } else if (!activeModId.isEmpty() && phase == Phase.DOWNLOADING) {
-            drawCentered(g, "Now installing: " + trimToWidth(activeModId, right - left - 72),
-                    cx, y + 18, COL_DIM);
-        }
+        renderModRows(g, left + 26, y, right - 26, bottom - 68);
     }
 
     private void renderModRows(GuiGraphics g, int left, int top, int right, int bottom) {
         int rowH = config.compactDownloadUi() ? 14 : 18;
         int maxRows = Math.max(1, (bottom - top) / rowH);
-        int count = Math.min(requiredMods.size(), maxRows);
+        visibleModRows = maxRows;
+        listTop = top;
+        listBottom = bottom;
+        int maxOffset = Math.max(0, requiredMods.size() - maxRows);
+        scrollOffset = Math.min(scrollOffset, maxOffset);
+        int count = Math.min(requiredMods.size() - scrollOffset, maxRows);
 
-        for (int i = 0; i < count; i++) {
-            int y = top + i * rowH;
-            g.fill(left, y, right, y + rowH - 2, i % 2 == 0 ? COL_ROW : COL_ROW_ALT);
+        for (int row = 0; row < count; row++) {
+            int i = scrollOffset + row;
+            int y = top + row * rowH;
+            g.fill(left, y, right, y + rowH - 2, row % 2 == 0 ? COL_ROW : COL_ROW_ALT);
             ModEntry entry = requiredMods.get(i);
             String name = trimToWidth(entry.displayName(), right - left - 112);
             g.drawString(font, statusMark(modStatus.get(i)), left + 7, y + 4, modColor.get(i), true);
@@ -274,25 +290,14 @@ public class ModReviewScreen extends Screen {
             g.drawString(font, version, right - font.width(version) - 8, y + 4, COL_MUTED, true);
         }
 
-        if (requiredMods.size() > count) {
-            drawCentered(g, "+" + (requiredMods.size() - count) + " more mods", this.width / 2,
-                    bottom - 11, COL_DIM);
+        if (maxOffset > 0) {
+            int trackX = right - 2;
+            int trackHeight = Math.max(1, bottom - top - 2);
+            int thumbHeight = Math.max(8, trackHeight * maxRows / requiredMods.size());
+            int thumbY = top + 1 + (trackHeight - thumbHeight) * scrollOffset / maxOffset;
+            g.fill(trackX, top, trackX + 2, bottom, 0x66000000);
+            g.fill(trackX, thumbY, trackX + 2, thumbY + thumbHeight, COL_OCEAN);
         }
-    }
-
-    private void drawHeader(GuiGraphics g, int cx, int y) {
-        drawCentered(g, "CONDUIT MOD SYNC", cx, y, theme.accentSoft());
-        g.fill(cx - 92, y + 12, cx + 92, y + 14, 0x552A3442);
-        g.fill(cx - 92, y + 12, cx - 24, y + 14, theme.accent());
-    }
-
-    private void drawPanel(GuiGraphics g, int left, int top, int right, int bottom) {
-        g.fill(left + 4, top + 5, right + 4, bottom + 5, 0x66000000);
-        g.fill(left, top, right, bottom, theme.panel());
-        g.fill(left, top, right, top + 2, theme.accent());
-        g.fill(left, bottom - 1, right, bottom, COL_BORDER);
-        g.fill(left, top, left + 1, bottom, COL_BORDER);
-        g.fill(right - 1, top, right, bottom, COL_BORDER);
     }
 
     private void drawProgressBar(GuiGraphics g, int left, int top, int right, double ratio) {
@@ -301,7 +306,17 @@ public class ModReviewScreen extends Screen {
         g.fill(left + 1, top + 1, right - 1, top + height - 1, 0xAA0D1118);
         int fillRight = left + 1 + (int) ((right - left - 2) * clamp(ratio, 0.0, 1.0));
         g.fill(left + 1, top + 1, fillRight, top + height - 1,
-                failedCount > 0 ? COL_RED : theme.accent());
+                failedCount > 0 ? COL_RED : COL_OCEAN);
+    }
+
+    private void renderConduit(GuiGraphics g, int centerX, int centerY, boolean spinning) {
+        float angle = spinning ? (Util.getMillis() % 4000L) * 360.0F / 4000.0F : 0.0F;
+        g.pose().pushPose();
+        g.pose().translate(centerX, centerY, 100.0F);
+        g.pose().mulPose(Axis.ZP.rotationDegrees(angle));
+        g.blit(CONDUIT_TEXTURE, -20, -22, 40, 44,
+                0.0F, 0.0F, 100, 110, 100, 110);
+        g.pose().popPose();
     }
 
     private void drawCentered(GuiGraphics g, String text, int cx, int y, int color) {
@@ -341,7 +356,7 @@ public class ModReviewScreen extends Screen {
     }
 
     private int panelHeight() {
-        int desired = config.compactDownloadUi() ? 190 : 210;
+        int desired = config.compactDownloadUi() ? 214 : 234;
         return Math.min(this.height - 20, desired);
     }
 

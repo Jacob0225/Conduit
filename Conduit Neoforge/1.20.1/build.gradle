@@ -35,7 +35,7 @@ processResources {
 tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8'; options.release = 17 }
 java { withSourcesJar() }
 jar {
-    manifest.attributes('MixinConfigs': 'conduit.client.mixins.json')
+    manifest.attributes('MixinConfigs': 'conduit.mixins.json,conduit.client.mixins.json')
     from('LICENSE') { rename { "${it}_${project.archives_base_name}" } }
 }
 publishing { publications { create('mavenJava', MavenPublication) { from components.java } } }

@@ -8,6 +8,9 @@ authors="Jacob0225, Mr.Fish"
 description='''Automatic server-to-client mod synchronization with hash verification.'''
 
 [[mixins]]
+config="conduit.mixins.json"
+
+[[mixins]]
 config="conduit.client.mixins.json"
 
 [[dependencies.conduit]]

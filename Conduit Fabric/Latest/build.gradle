@@ -7,7 +7,7 @@ version = project.mod_version
 group = project.maven_group
 
 ext.conduitTargets = [
-        [loader: "fabric",   minecraft: "26.2",    status: "scaffolded"],
+        [loader: "fabric",   minecraft: "26.2",    status: "implemented"],
         [loader: "fabric",   minecraft: "26.1",    status: "implemented"],
         [loader: "fabric",   minecraft: "1.21.11", status: "scaffolded"],
         [loader: "fabric",   minecraft: "1.21.1",  status: "scaffolded"],
@@ -50,7 +50,7 @@ repositories {
 dependencies {
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
 
-    // 26.1 is unobfuscated — use plain implementation, not modImplementation
+    // Minecraft 26.x is unobfuscated — use plain implementation, not modImplementation
     implementation "net.fabricmc:fabric-loader:${project.loader_version}"
     implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
     implementation "com.terraformersmc:modmenu:${project.modmenu_version}"
@@ -116,6 +116,6 @@ tasks.register("conduitTargets") {
 
 tasks.register("buildFabric26_1") {
     group = "conduit"
-    description = "Builds the currently implemented Fabric 26.1 target."
+    description = "Builds the Fabric target shared by Minecraft 26.1 and 26.2."
     dependsOn "build"
 }
