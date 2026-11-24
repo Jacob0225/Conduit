@@ -239,17 +239,16 @@ public class ServerInstallRecord {
     }
 
     /**
-     * Same version-satisfaction logic as {@link InstalledModIndex}: exact match,
-     * then build-metadata-stripped equality, then substring containment. Handles
-     * Fabric version-string variants like "0.6.0+mc26.1" vs "0.6.0+mc26.1+b.100".
+     * Exact match, or equality after stripping a second {@code +build} suffix
+     * (Fabric variants like "0.6.0+mc26.1" vs "0.6.0+mc26.1+b.100").
+     *
+     * <p>Substring containment is deliberately not accepted: it let "1.2"
+     * satisfy "1.2.5", and a blank recorded version satisfied every version.
      */
-    private static boolean versionSatisfies(String installed, String required) {
+    static boolean versionSatisfies(String installed, String required) {
+        if (installed == null || required == null || installed.isBlank() || required.isBlank()) return false;
         if (installed.equals(required)) return true;
-        String ni = stripBuildMeta(installed);
-        String nr = stripBuildMeta(required);
-        if (ni.equals(nr)) return true;
-        return installed.contains(required) || required.contains(installed)
-                || ni.contains(nr) || nr.contains(ni);
+        return stripBuildMeta(installed).equals(stripBuildMeta(required));
     }
 
     private static String stripBuildMeta(String version) {

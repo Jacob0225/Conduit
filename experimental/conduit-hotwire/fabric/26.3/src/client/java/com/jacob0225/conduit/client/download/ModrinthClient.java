@@ -38,6 +38,11 @@ public class ModrinthClient {
             String filename
     ) {}
 
+    /** The Minecraft version every lookup is filtered by. */
+    public String minecraftVersion() {
+        return minecraftVersion;
+    }
+
     public ModrinthClient(String minecraftVersion) {
         this.minecraftVersion = minecraftVersion;
         this.http = HttpClient.newBuilder()
@@ -96,8 +101,16 @@ public class ModrinthClient {
             JsonArray files = v.getAsJsonArray("files");
             if (files == null || files.isEmpty()) continue;
 
-            // Use the primary file (first in the list)
+            // Use the file Modrinth marks as primary. It is usually, but not
+            // always, first; sources/dev jars are sometimes listed before it.
             JsonObject file = files.get(0).getAsJsonObject();
+            for (JsonElement candidate : files) {
+                JsonObject f = candidate.getAsJsonObject();
+                if (f.has("primary") && f.get("primary").isJsonPrimitive() && f.get("primary").getAsBoolean()) {
+                    file = f;
+                    break;
+                }
+            }
             String rawUrl   = file.get("url").getAsString();
             String filename = file.get("filename").getAsString();
 

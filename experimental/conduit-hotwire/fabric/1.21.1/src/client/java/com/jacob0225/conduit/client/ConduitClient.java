@@ -1,18 +1,22 @@
 package com.jacob0225.conduit.client;
 
 import com.jacob0225.conduit.client.config.ClientConfig;
+import com.jacob0225.conduit.client.download.ModStashManager;
 import com.jacob0225.conduit.client.download.ServerInstallRecord;
 import com.jacob0225.conduit.client.network.ConduitJoinInterceptor;
 import com.jacob0225.conduit.network.PortDiscovery;
 import net.fabricmc.fabric.api.client.networking.v1.ClientLoginConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientLoginNetworking;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
+import net.fabricmc.fabric.api.client.screen.v1.Screens;
+import com.jacob0225.conduit.client.ui.GearButton;
+import net.minecraft.client.gui.screens.TitleScreen;
 import net.fabricmc.loader.api.FabricLoader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import net.fabricmc.api.ClientModInitializer;
 
-import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
@@ -34,8 +38,10 @@ public class ConduitClient implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
-        ClientConfig.load();
+        ClientConfig config = ClientConfig.load();
+        com.jacob0225.conduit.client.ui.ConduitUi.applyTheme(config.theme());
         verifyInstallRecords();
+        registerTitleScreenGear();
         ClientLoginNetworking.registerGlobalReceiver(PortDiscovery.CHANNEL,
                 (client, handler, buf, callbacks) -> {
                     final PortDiscovery.Endpoint endpoint;
@@ -55,6 +61,17 @@ public class ConduitClient implements ClientModInitializer {
         LOGGER.info("Conduit client ready — login port discovery active");
     }
 
+    /** Adds the blue Conduit gear to the top-right corner of the main menu. */
+    private void registerTitleScreenGear() {
+        ScreenEvents.AFTER_INIT.register((client, screen, width, height) -> {
+            if (!(screen instanceof TitleScreen) || !ClientConfig.get().titleScreenButton()) return;
+            GearButton gear = new GearButton(screen, width - 26, 6);
+            Screens.getButtons(screen).add(gear);
+            ScreenEvents.afterRender(screen).register((s, graphics, mouseX, mouseY, delta) ->
+                    gear.renderOverlay(graphics, s.width, s.height));
+        });
+    }
+
     /**
      * For each per-server install record, confirm every jar it claims to own is
      * still findable — either in {@code mods/} (active) or in the stash (swapped
@@ -63,8 +80,6 @@ public class ConduitClient implements ClientModInitializer {
      */
     private void verifyInstallRecords() {
         Path gameDir = FabricLoader.getInstance().getGameDir();
-        Path modsDir = gameDir.resolve("mods");
-        Path stashDir = gameDir.resolve("conduit-stash");
 
         int checked = 0;
         int invalidated = 0;
@@ -72,9 +87,9 @@ public class ConduitClient implements ClientModInitializer {
             checked++;
             boolean stale = false;
             for (String fn : rec.ownedJarFilenames()) {
-                Path inMods  = modsDir.resolve(fn);
-                Path inStash = stashDir.resolve(rec.key().stem()).resolve(fn);
-                if (!Files.exists(inMods) && !Files.exists(inStash)) {
+                // A jar shared with another server may be stashed under that
+                // server's folder, so look in every stash before giving up.
+                if (!ModStashManager.isAvailable(gameDir, fn)) {
                     LOGGER.warn("Record for '{}' references jar '{}' that is missing "
                             + "from both mods/ and the stash — invalidating record.",
                             rec.serverName(), fn);

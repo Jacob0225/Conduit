@@ -1,5 +1,14 @@
 # Verification
 
+Update (UI renovation): all three projects rebuilt with the new Conduit UI
+(shared panel/button/toggle kit, single-screen Hotwire plan review, UI sounds
+setting) and the client bug fixes. The 26.3 client was driven through a Fabric
+client game test against a local 26.3 server whose manifest required AppleSkin
+(downloaded and verified) and Decorative Blocks 4.1.3+fabric (correctly shown as
+failed: Modrinth has no 26.3 Fabric build). Every screen was screenshotted at
+1280x720 and 640x400. 26.2 and 1.21.1 were build-checked only; Hotwire itself
+was not installed, and sounds were exercised but not listened to.
+
 Update (2026-11-23): the 26.3 experiment has since been tested in-game for live
 installation and switching off/on between separate local servers. See
 `testing/hotwire-26.3/RESULT.md` and `testing/hotwire-26.3/SWITCHING.md` at the

@@ -1,0 +1,51 @@
+plugins {
+    id 'java'
+    id 'maven-publish'
+    id 'net.minecraftforge.gradle' version '[7.0.3,8)'
+}
+
+version = project.mod_version
+group = project.maven_group
+base { archivesName = project.archives_base_name }
+java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+
+sourceSets.main {
+    java.srcDir 'src/client/java'
+    java.srcDir '../../shared' // ConduitSounds + the (reflection-only) Hotwire bridge
+    java.exclude '**/HotwireServerSwitch.java' // Fabric-only (26.3 server switching)
+    resources.srcDir 'src/client/resources'
+}
+
+minecraft {
+    mappings channel: 'official', version: project.minecraft_version
+    runs {
+        configureEach { workingDir = layout.projectDirectory.dir('run') }
+        register('client')
+        register('server') { args '--nogui' }
+    }
+}
+
+repositories {
+    minecraft.mavenizer(it)
+    maven fg.forgeMaven
+    maven fg.minecraftLibsMaven
+    mavenCentral()
+}
+
+dependencies {
+    implementation minecraft.dependency("net.minecraftforge:forge:${project.minecraft_version}-${project.forge_version}")
+}
+
+processResources {
+    def props = [version: project.version, minecraft_version_range: project.minecraft_version_range,
+                 forge_version_range: project.forge_version_range, loader_version_range: project.loader_version_range]
+    inputs.properties(props)
+    filesMatching('META-INF/mods.toml') { expand(props) }
+}
+
+tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8'; options.release = 21 }
+java { withSourcesJar() }
+jar {
+    manifest.attributes('MixinConfigs': 'conduit.mixins.json,conduit.client.mixins.json')
+}
+

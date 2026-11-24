@@ -1,0 +1,25 @@
+modLoader="javafml"
+loaderVersion="${loader_version_range}"
+license="All Rights Reserved"
+
+[[mods]]
+modId="conduit"
+version="${version}"
+displayName="Conduit"
+authors="Jacob0225, Mr.Fish"
+displayTest="IGNORE_ALL_VERSION"
+description='''Automatic server-to-client mod synchronization with hash verification.'''
+
+[[dependencies.conduit]]
+modId="forge"
+mandatory=true
+versionRange="${forge_version_range}"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies.conduit]]
+modId="minecraft"
+mandatory=true
+versionRange="${minecraft_version_range}"
+ordering="NONE"
+side="BOTH"

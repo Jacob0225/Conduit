@@ -1,13 +1,18 @@
 package com.jacob0225.conduit.client.ui;
 
-import com.jacob0225.conduit.client.network.ConduitJoinInterceptor;
 import com.jacob0225.conduit.client.util.InstanceRestarter;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.screens.ConnectScreen;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.multiplayer.ServerData;
+import net.minecraft.client.multiplayer.resolver.ServerAddress;
 import net.minecraft.network.chat.Component;
+import net.minecraft.util.FormattedCharSequence;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.List;
 
 /**
  * Confirmation screen shown when the player is switching to a server whose
@@ -17,77 +22,117 @@ public class ModSwitchScreen extends Screen {
 
     private static final Logger LOGGER = LoggerFactory.getLogger("Conduit/Switch");
 
-    private static final int COL_WHITE = 0xFFFFFFFF;
-    private static final int COL_MUTED = 0xFFA0A0A0;
-    private static final int COL_GREEN = 0xFF55FF55;
-    private static final int COL_YELLOW = 0xFFFFFF55;
-    private static final int COL_OCEAN = 0xFF35B9E8;
-
     private final String serverName;
     private final Screen parent;
+    private final ServerAddress address;
+    private final ServerData serverData;
+    private boolean openSoundPlayed;
 
-    public ModSwitchScreen(String serverName, Screen parent) {
+    public ModSwitchScreen(String serverName, Screen parent, ServerAddress address, ServerData serverData) {
         super(Component.literal("Conduit - Server Switch"));
-        this.serverName = serverName != null ? serverName : "this server";
+        this.serverName = serverName != null && !serverName.isBlank() ? serverName : "this server";
         this.parent = parent;
+        this.address = address;
+        this.serverData = serverData;
     }
+
+    private int panelWidth() { return Math.min(this.width - 16, 400); }
+    private int panelHeight() { return Math.min(this.height - 16, 196); }
+    private int left() { return this.width / 2 - panelWidth() / 2; }
+    private int top() { return this.height / 2 - panelHeight() / 2; }
 
     @Override
     protected void init() {
-        int panelWidth = Math.min(this.width - 28, 500);
-        int left = this.width / 2 - panelWidth / 2;
-        int by = this.height / 2 + 76;
-        int buttonWidth = Math.min(150, (panelWidth - 58) / 2);
+        int b = top() + panelHeight();
+        int gap = 6;
+        int each = Math.min(124, (panelWidth() - 28 - gap * 2) / 3);
+        int x = this.width / 2 - (each * 3 + gap * 2) / 2;
+        boolean relaunch = InstanceRestarter.canRelaunch();
 
-        addRenderableWidget(Button.builder(
-                Component.literal("Restart & Join"),
-                btn -> {
-                    LOGGER.info("Player confirmed restart for server switch to '{}'", serverName);
-                    InstanceRestarter.restart();
-                }
-        ).bounds(left + 24, by, buttonWidth, 20).build());
+        addRenderableWidget(new ConduitButton(x, b - 30, each, 20,
+                Component.literal(relaunch ? "Restart & join" : "Close game"), ConduitButton.Style.PRIMARY, btn -> {
+            LOGGER.info("Player confirmed restart for server switch to '{}'", serverName);
+            InstanceRestarter.restart();
+        }).tooltip(relaunch ? "Restart Minecraft with this server's mods, then reconnect."
+                : "Minecraft closes. Start it again from your launcher, then reconnect."));
 
-        addRenderableWidget(Button.builder(
-                Component.literal("Join Anyway"),
-                btn -> {
-                    LOGGER.info("Player chose Join Anyway for '{}' - skipping swap restart", serverName);
-                    ConduitJoinInterceptor.bypassNextCheck();
-                    this.onClose();
-                }
-        ).bounds(left + panelWidth - 24 - buttonWidth, by, buttonWidth, 20).build());
+        ConduitButton join = new ConduitButton(x + each + gap, b - 30, each, 20, Component.literal("Join anyway"),
+                ConduitButton.Style.WARNING, btn -> joinAnyway())
+                .tooltip("Join with the mods that are loaded right now. The server may disconnect you.");
+        join.active = address != null;
+        addRenderableWidget(join);
+
+        addRenderableWidget(new ConduitButton(x + (each + gap) * 2, b - 30, each, 20, Component.literal("Back"),
+                ConduitButton.Style.SECONDARY, btn -> minecraft.setScreen(parent)));
+
+        if (!openSoundPlayed) {
+            openSoundPlayed = true;
+            ConduitSounds.open();
+        }
     }
 
-    @Override
-    public void render(GuiGraphics g, int mx, int my, float delta) {
-        if (parent != null) parent.render(g, mx, my, delta);
-
-        int width = Math.min(this.width - 28, 500);
-        int height = 220;
-        int top = this.height / 2 - height / 2;
-
-        int cx = this.width / 2;
-        int y = top + 22;
-        drawCentered(g, "CONDUIT MOD SYNC", cx, y, COL_OCEAN);
-        y += 38;
-        drawCentered(g, "Switching to " + serverName, cx, y, COL_WHITE);
-        y += 18;
-        drawCentered(g, "Conduit restored this server's saved mod set.", cx, y, COL_MUTED);
-        y += 14;
-        drawCentered(g, "Restart Minecraft so your mod loader can load the new jars.", cx, y, COL_MUTED);
-        y += 22;
-        drawCentered(g, "After restart, reconnect to " + serverName + ".", cx, y, COL_GREEN);
-        y += 16;
-        drawCentered(g, "Join Anyway may disconnect if the current loaded mods differ.", cx, y, COL_YELLOW);
-
-        super.render(g, mx, my, delta);
+    /**
+     * Previously this only closed the screen (back to the server list) despite
+     * its label. The stash is already reconciled, so a fresh connection passes
+     * Conduit's check and proceeds with the currently loaded mods.
+     */
+    private void joinAnyway() {
+        if (address == null) {
+            minecraft.setScreen(parent);
+            return;
+        }
+        LOGGER.info("Player chose Join anyway for '{}' - skipping swap restart", serverName);
+        ConnectScreen.startConnecting(parent != null ? parent : this, minecraft, address, serverData, false, null);
     }
 
     @Override
     public void onClose() {
+        ConduitSounds.press(ConduitSounds.Press.BACK);
         minecraft.setScreen(parent);
     }
 
-    private void drawCentered(GuiGraphics g, String text, int cx, int y, int color) {
-        g.drawString(font, text, cx - font.width(text) / 2, y, color, true);
+    @Override
+    public void renderBackground(GuiGraphics g, int mx, int my, float delta) {
+        // Drawn at the start of render() instead.
+    }
+
+    @Override
+    public void render(GuiGraphics g, int mx, int my, float delta) {
+        ConduitUi.backdrop(g, this.width, this.height);
+        int l = left();
+        int t = top();
+        int r = l + panelWidth();
+        int b = t + panelHeight();
+        ConduitUi.panel(g, l, t, r, b);
+        ConduitUi.emblem(g, l + 26, t + 24, 22, false, ConduitUi.ACCENT);
+        ConduitUi.text(g, Component.literal("Switching servers").withStyle(ChatFormatting.BOLD), l + 46, t + 12,
+                ConduitUi.TEXT);
+        g.fill(l + 46, t + 27, l + 49, t + 30, ConduitUi.ACCENT);
+        ConduitUi.text(g, ConduitUi.trim(serverName, r - l - 120), l + 53, t + 25, ConduitUi.MUTED);
+        ConduitUi.pill(g, "RESTART", r - 10, t + 11, ConduitUi.GOLD, true);
+        ConduitUi.divider(g, l + 10, r - 10, t + 44);
+
+        int y = t + 54;
+        int wrap = r - l - 44;
+        y = paragraph(g, ConduitUi.Icon.CHECK, ConduitUi.GREEN,
+                "Conduit restored this server's saved mod set into your mods folder.", l + 14, y, wrap);
+        y = paragraph(g, ConduitUi.Icon.INFO, ConduitUi.ACCENT, InstanceRestarter.canRelaunch()
+                ? "Restart Minecraft so the mod loader picks up the new jars, then reconnect."
+                : "Close Minecraft and start it again from your launcher, then reconnect.", l + 14, y, wrap);
+        paragraph(g, ConduitUi.Icon.WARN, ConduitUi.YELLOW,
+                "Join anyway uses the mods loaded right now and may be disconnected.", l + 14, y, wrap);
+
+        super.render(g, mx, my, delta);
+        ConduitParticles.render(g);
+    }
+
+    private int paragraph(GuiGraphics g, ConduitUi.Icon icon, int color, String text, int x, int y, int wrap) {
+        List<FormattedCharSequence> lines = ConduitUi.font().split(Component.literal(text), wrap);
+        ConduitUi.icon(g, icon, x + 2, y + 1, color);
+        for (FormattedCharSequence line : lines) {
+            ConduitUi.text(g, line, x + 16, y, ConduitUi.TEXT);
+            y += 10;
+        }
+        return y + 6;
     }
 }

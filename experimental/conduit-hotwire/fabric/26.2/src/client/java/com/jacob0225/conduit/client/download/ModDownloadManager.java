@@ -140,8 +140,11 @@ public class ModDownloadManager {
         }
 
         if (modrinthInfo == null) {
-            String reason = "Could not resolve " + entry.modId() + " " + entry.requiredVersion()
-                    + " from Modrinth";
+            String reason = entry.modrinthProjectId().isEmpty()
+                    ? "The server did not give a Modrinth project for " + entry.modId() + "."
+                    : "Modrinth has no Fabric " + modrinthClient.minecraftVersion() + " build of "
+                    + entry.modId() + " " + entry.requiredVersion()
+                    + " (or Modrinth could not be reached). Ask the server owner for a compatible version.";
             LOGGER.error(reason);
             listener.onError(entry.modId(), reason);
             return new OneResult(false, null);
@@ -152,16 +155,33 @@ public class ModDownloadManager {
         String apiHash     = modrinthInfo.sha512();
         String filename    = modrinthInfo.filename();
 
-        // Skip if the file is already present in the mods folder (e.g. from a
-        // previous install attempt this session). Don't re-download or delete it.
-        Path destination = managedDir.resolve(filename);
-        if (Files.exists(destination)) {
-            LOGGER.info("{} already present in mods/ — skipping download.", entry.modId());
-            listener.onComplete(entry.modId());
-            return new OneResult(true, filename);
+        // Modrinth supplies the filename; never let it name a path outside mods/.
+        if (!isSafeJarFilename(filename)) {
+            String reason = "Modrinth returned an unsafe filename for " + entry.modId();
+            LOGGER.error("{}: {}", reason, filename);
+            listener.onError(entry.modId(), reason);
+            return new OneResult(false, null);
         }
 
-        Path stagingFile = stagingDir.resolve(entry.modId() + "-" + entry.requiredVersion() + ".jar.tmp");
+        // Skip if the exact verified file is already present (e.g. from a
+        // previous install attempt). A same-named file with different bytes is
+        // a truncated or tampered copy and is replaced by a fresh download.
+        Path destination = managedDir.resolve(filename);
+        if (Files.isRegularFile(destination)) {
+            try {
+                HashVerifier.verifyBoth(destination, entry.hashAlgorithm(), apiHash, entry.expectedHash());
+                LOGGER.info("{} already present in mods/ and verified — skipping download.", entry.modId());
+                listener.onComplete(entry.modId());
+                return new OneResult(true, filename);
+            } catch (HashVerifier.VerificationException | IOException e) {
+                LOGGER.warn("Existing {} does not match the expected hash; downloading a fresh copy.",
+                        destination.getFileName());
+            }
+        }
+
+        // Version strings are validated upstream, but keep the staging name filename-safe anyway.
+        Path stagingFile = stagingDir.resolve((entry.modId() + "-" + entry.requiredVersion())
+                .replaceAll("[^A-Za-z0-9._+-]", "_") + ".jar.tmp");
 
         try {
             downloadFile(downloadUrl, stagingFile);
@@ -182,6 +202,7 @@ public class ModDownloadManager {
             return new OneResult(false, null);
         } catch (IOException e) {
             LOGGER.error("Could not read staging file for verification: {}", e.getMessage());
+            listener.onError(entry.modId(), "Could not verify the download: " + e.getMessage());
             deleteSilently(stagingFile);
             return new OneResult(false, null);
         }
@@ -192,6 +213,7 @@ public class ModDownloadManager {
             LOGGER.info("Installed {} → {}", entry.modId(), destination.getFileName());
         } catch (IOException e) {
             LOGGER.error("Failed to install {}: {}", entry.modId(), e.getMessage());
+            listener.onError(entry.modId(), "Could not move the jar into mods/: " + e.getMessage());
             deleteSilently(stagingFile);
             return new OneResult(false, null);
         }
@@ -225,6 +247,19 @@ public class ModDownloadManager {
             Thread.currentThread().interrupt();
             throw new IOException("Download interrupted", e);
         }
+    }
+
+    /** A plain {@code name.jar} with no directory parts, drive letters or control characters. */
+    static boolean isSafeJarFilename(String filename) {
+        if (filename == null || filename.isBlank() || filename.length() > 255) return false;
+        if (!filename.toLowerCase(java.util.Locale.ROOT).endsWith(".jar")) return false;
+        if (filename.startsWith(".") || filename.contains("..")) return false;
+        for (int i = 0; i < filename.length(); i++) {
+            char c = filename.charAt(i);
+            if (c < 0x20 || c == '/' || c == '\\' || c == ':' || c == '*' || c == '?'
+                    || c == '"' || c == '<' || c == '>' || c == '|') return false;
+        }
+        return true;
     }
 
     private void deleteSilently(Path path) {

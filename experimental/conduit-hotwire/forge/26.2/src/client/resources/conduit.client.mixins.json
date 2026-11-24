@@ -1,0 +1,13 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.jacob0225.conduit.client.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "MixinConnectScreen",
+    "MixinOnlineServerEntry"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

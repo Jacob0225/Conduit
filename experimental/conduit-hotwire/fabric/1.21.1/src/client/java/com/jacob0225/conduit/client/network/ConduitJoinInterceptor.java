@@ -47,7 +47,8 @@ public final class ConduitJoinInterceptor {
                         .reconcile(record.key(), record.ownedJarFilenames());
                 if (!result.changed()) return PortDiscovery.READY;
                 afterDisconnect = () -> Minecraft.getInstance().setScreen(
-                        new ModSwitchScreen(payload.serverName(), current.parent()));
+                        new ModSwitchScreen(payload.serverName(), current.parent(),
+                                current.address(), current.serverData()));
                 return PortDiscovery.NEEDS_SETUP;
             }
             int required = (int) payload.mods().stream().filter(ModEntry::required).count();

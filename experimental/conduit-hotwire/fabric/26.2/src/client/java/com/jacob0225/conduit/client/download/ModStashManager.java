@@ -123,36 +123,40 @@ public class ModStashManager {
         }
 
         // ── Move the target's jars IN from the stash ───────────────────────
-        Path targetStash = gameDir.resolve(STASH_DIR).resolve(targetKey.stem());
-        if (Files.isDirectory(targetStash)) {
-            try (var stream = Files.newDirectoryStream(targetStash, "*.jar")) {
-                for (Path stashed : stream) {
-                    String fn = stashed.getFileName().toString();
-                    // Only restore jars the target actually needs (the stash may
-                    // contain an older version; the record is authoritative).
-                    if (!targetFilenames.contains(fn)) {
-                        LOGGER.info("Leaving stashed '{}' — not in current target set", fn);
-                        continue;
-                    }
-                    // Don't clobber a newer jar already in mods/ (e.g. one just
-                    // downloaded for this server). REPLACE_EXISTING is still fine:
-                    // if it's in mods/ AND stashed, the stashed copy is stale.
-                    Path dest = modsDir.resolve(fn);
-                    if (Files.exists(dest)) {
-                        // Already present in mods/ — drop the stale stash copy.
-                        try { Files.delete(stashed); } catch (IOException ignored) {}
-                        continue;
-                    }
-                    try {
-                        Files.move(stashed, dest, StandardCopyOption.REPLACE_EXISTING);
-                        movedIn++;
-                        LOGGER.info("Restored '{}' from stash into mods/", fn);
+        // A jar shared by several servers is stashed under whichever record
+        // claimed it first, so search every server's stash folder, not just
+        // the target's own (otherwise a shared jar is never restored).
+        Path stashRoot = gameDir.resolve(STASH_DIR);
+        if (Files.isDirectory(stashRoot)) {
+            try (var owners = Files.newDirectoryStream(stashRoot, Files::isDirectory)) {
+                for (Path ownerStash : owners) {
+                    try (var stream = Files.newDirectoryStream(ownerStash, "*.jar")) {
+                        for (Path stashed : stream) {
+                            String fn = stashed.getFileName().toString();
+                            // Only restore jars the target actually needs (the stash may
+                            // contain an older version; the record is authoritative).
+                            if (!targetFilenames.contains(fn)) continue;
+                            Path dest = modsDir.resolve(fn);
+                            if (Files.exists(dest)) {
+                                // Already present in mods/ — drop the stale stash copy.
+                                try { Files.delete(stashed); } catch (IOException ignored) {}
+                                continue;
+                            }
+                            try {
+                                Files.move(stashed, dest, StandardCopyOption.REPLACE_EXISTING);
+                                movedIn++;
+                                LOGGER.info("Restored '{}' from stash '{}' into mods/",
+                                        fn, ownerStash.getFileName());
+                            } catch (IOException e) {
+                                LOGGER.error("Could not restore '{}' from stash: {}", fn, e.getMessage());
+                            }
+                        }
                     } catch (IOException e) {
-                        LOGGER.error("Could not restore '{}' from stash: {}", fn, e.getMessage());
+                        LOGGER.error("Could not scan stash '{}': {}", ownerStash.getFileName(), e.getMessage());
                     }
                 }
             } catch (IOException e) {
-                LOGGER.error("Could not scan stash for '{}': {}", targetKey.stem(), e.getMessage());
+                LOGGER.error("Could not scan the stash for '{}': {}", targetKey.stem(), e.getMessage());
             }
         }
 
@@ -189,6 +193,21 @@ public class ModStashManager {
             LOGGER.warn("Could not scan mods/ for owned jars: {}", e.getMessage());
         }
         return present;
+    }
+
+    /** True if {@code filename} is in mods/ or in any server's stash folder. */
+    public static boolean isAvailable(Path gameDir, String filename) {
+        if (Files.exists(gameDir.resolve(MODS_DIR).resolve(filename))) return true;
+        Path stashRoot = gameDir.resolve(STASH_DIR);
+        if (!Files.isDirectory(stashRoot)) return false;
+        try (var owners = Files.newDirectoryStream(stashRoot, Files::isDirectory)) {
+            for (Path ownerStash : owners) {
+                if (Files.exists(ownerStash.resolve(filename))) return true;
+            }
+        } catch (IOException e) {
+            LOGGER.warn("Could not scan the stash: {}", e.getMessage());
+        }
+        return false;
     }
 
     /** All known server keys (one per record file). */

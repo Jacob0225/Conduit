@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Conduit Manifest Builder</title>
+<style>
+  :root {
+    --bg: #071320; --bg2: #0b2030; --panel: #0e1925; --edge: #1f3a50; --row: #132230; --row-hi: #1a3043;
+    --accent: #35b9e8; --accent2: #3fe0c5; --deep: #1b6f95; --text: #eaf6ff; --muted: #8fa8bb; --dim: #587085;
+    --green: #5be38c; --yellow: #ffd866; --red: #ff6b6b; --gold: #ffb547;
+    --radius: 6px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    background: linear-gradient(180deg, var(--bg), var(--bg2)) fixed;
+    color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 24px 20px 60px; }
+  header { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
+  .logo {
+    width: 42px; height: 42px; border-radius: 8px; flex: none;
+    background: radial-gradient(circle at 50% 45%, #c9b48a 0 30%, #6f5b3f 31% 46%, #2c4a5e 47%);
+    box-shadow: 0 0 0 1px var(--edge), 0 0 18px rgba(53,185,232,.25);
+  }
+  h1 { font-size: 20px; margin: 0; letter-spacing: .2px; }
+  .sub { color: var(--muted); font-size: 13px; }
+  .panel {
+    background: var(--panel); border: 1px solid var(--edge); border-radius: var(--radius);
+    box-shadow: 0 6px 20px rgba(0,0,0,.35); position: relative; overflow: hidden;
+  }
+  .panel::before {
+    content: ""; position: absolute; inset: 0 0 auto 0; height: 2px;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+  }
+  .panel-head { padding: 14px 16px 10px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .panel-head h2 { font-size: 14px; margin: 0; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); }
+  .panel-body { padding: 0 16px 16px; }
+  .grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+  .settings { display: grid; grid-template-columns: 2fr 1fr 2fr; gap: 12px; margin-bottom: 16px; padding: 16px; }
+  @media (max-width: 700px) { .settings { grid-template-columns: 1fr; } }
+  label.field { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: var(--muted); }
+  input[type=text], input[type=search], select {
+    background: #081019; color: var(--text); border: 1px solid #1c3346; border-radius: 5px;
+    padding: 8px 10px; font: inherit; outline: none; width: 100%;
+  }
+  input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(53,185,232,.2); }
+  input.bad { border-color: var(--red); }
+  .seg { display: flex; border: 1px solid #1c3346; border-radius: 5px; overflow: hidden; }
+  .seg button { flex: 1; border: 0; border-radius: 0; background: #081019; color: var(--muted); padding: 8px 6px; }
+  .seg button.on { background: var(--deep); color: #fff; }
+  .hint { font-size: 12px; color: var(--dim); margin-top: 4px; }
+  button {
+    font: inherit; cursor: pointer; border-radius: 5px; border: 1px solid #2e5470; background: #172a3a;
+    color: var(--text); padding: 7px 12px; transition: background .12s, transform .06s, border-color .12s;
+  }
+  button:hover:not(:disabled) { background: #20384c; border-color: #3d6a8a; }
+  button:active:not(:disabled) { transform: translateY(1px); }
+  button:disabled { opacity: .45; cursor: default; }
+  button.primary { background: var(--deep); border-color: var(--accent); color: #fff; }
+  button.primary:hover:not(:disabled) { background: #2283b0; }
+  button.danger { background: transparent; border-color: transparent; color: var(--dim); padding: 4px 8px; }
+  button.danger:hover { color: var(--red); background: rgba(255,107,107,.08); border-color: transparent; }
+  .row-search { display: flex; gap: 8px; margin-bottom: 8px; }
+  .checkbox { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); user-select: none; }
+  .list { display: flex; flex-direction: column; gap: 6px; }
+  .card {
+    display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 10px; align-items: center;
+    background: var(--row); border-radius: 5px; padding: 8px 10px; border-left: 2px solid transparent;
+  }
+  .card:hover { background: var(--row-hi); }
+  .card img, .card .noimg { width: 40px; height: 40px; border-radius: 6px; background: #0a141e; object-fit: cover; }
+  .title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .desc { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .meta { color: var(--dim); font-size: 12px; }
+  .pill {
+    display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 4px; border: 1px solid;
+    letter-spacing: .4px; vertical-align: 1px; margin-left: 6px;
+  }
+  .pill.green { color: var(--green); border-color: rgba(91,227,140,.45); background: rgba(91,227,140,.1); }
+  .pill.red { color: var(--red); border-color: rgba(255,107,107,.45); background: rgba(255,107,107,.1); }
+  .pill.gold { color: var(--gold); border-color: rgba(255,181,71,.45); background: rgba(255,181,71,.1); }
+  .pill.blue { color: var(--accent); border-color: rgba(53,185,232,.45); background: rgba(53,185,232,.1); }
+  .mod {
+    background: var(--row); border-radius: 5px; padding: 10px; border-left: 2px solid var(--accent);
+    display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 10px;
+  }
+  .mod.warn { border-left-color: var(--gold); }
+  .mod.err { border-left-color: var(--red); }
+  .mod-fields { display: grid; grid-template-columns: 1.2fr 1.2fr auto; gap: 8px; margin-top: 8px; align-items: end; }
+  @media (max-width: 560px) { .mod-fields { grid-template-columns: 1fr; } }
+  .mod-fields label.field { font-size: 11px; }
+  .mod-fields input, .mod-fields select { padding: 6px 8px; font-size: 13px; }
+  .problem { font-size: 12px; margin-top: 6px; }
+  .problem.warn { color: var(--gold); }
+  .problem.err { color: var(--red); }
+  .switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12px; color: var(--muted); user-select: none; padding-bottom: 6px; }
+  .switch input { display: none; }
+  .switch .track { width: 32px; height: 18px; border-radius: 9px; background: #2a3b4b; position: relative; transition: background .15s; border: 1px solid #3a5064; }
+  .switch .track::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: #eaf6ff; transition: left .15s; }
+  .switch input:checked + .track { background: var(--deep); border-color: var(--accent); }
+  .switch input:checked + .track::after { left: 16px; }
+  .empty { color: var(--dim); text-align: center; padding: 26px 10px; border: 1px dashed #1c3346; border-radius: 5px; }
+  .out { margin-top: 16px; }
+  pre {
+    margin: 0; background: #081019; border: 1px solid #1c3346; border-radius: 5px; padding: 12px;
+    max-height: 420px; overflow: auto; font: 12px/1.5 ui-monospace, "Cascadia Code", Consolas, monospace; color: #cfe7f7;
+  }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .status { font-size: 12px; color: var(--muted); min-height: 18px; }
+  .status.err { color: var(--red); }
+  .status.ok { color: var(--green); }
+  .issues { margin: 0 0 10px; padding-left: 18px; font-size: 12px; }
+  .issues li.err { color: var(--red); }
+  .issues li.warn { color: var(--gold); }
+  .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid rgba(53,185,232,.25); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; vertical-align: -2px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translate(-50%, 20px); opacity: 0;
+    background: #0e1925; border: 1px solid var(--accent); color: var(--text); padding: 8px 14px; border-radius: 6px;
+    transition: opacity .18s, transform .18s; pointer-events: none; box-shadow: 0 6px 20px rgba(0,0,0,.4);
+  }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+  a { color: var(--accent); }
+  .count { color: var(--accent); font-weight: 600; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo" aria-hidden="true"></div>
+    <div>
+      <h1>Conduit Manifest Builder</h1>
+      <div class="sub">Search Modrinth, add the mods players need, then download <code>config/conduit/manifest.json</code>.</div>
+    </div>
+  </header>
+
+  <section class="panel settings">
+    <label class="field">Server name
+      <input type="text" id="serverName" maxlength="256" placeholder="My Conduit Server">
+    </label>
+    <label class="field">Minecraft version
+      <input type="text" id="mcVersion" placeholder="26.3">
+    </label>
+    <div class="field">
+      <span style="font-size:12px;color:var(--muted)">Manifest format</span>
+      <div class="seg" role="radiogroup" aria-label="Manifest format">
+        <button type="button" id="fmt2" role="radio">Latest (schema 2)</button>
+        <button type="button" id="fmt1" role="radio">Pinned (schema 1)</button>
+      </div>
+      <div class="hint" id="fmtHint"></div>
+    </div>
+  </section>
+
+  <div class="grid">
+    <section class="panel">
+      <div class="panel-head"><h2>Find mods</h2><span class="status" id="searchStatus"></span></div>
+      <div class="panel-body">
+        <form class="row-search" id="searchForm">
+          <label class="sr" for="query">Search Modrinth</label>
+          <input type="search" id="query" placeholder="Search Modrinth (e.g. sodium, appleskin)" autocomplete="off">
+          <button class="primary" type="submit">Search</button>
+        </form>
+        <label class="checkbox"><input type="checkbox" id="onlyCompatible" checked> Only mods with a Fabric build for this Minecraft version</label>
+        <form class="row-search" id="slugForm" style="margin-top:10px">
+          <label class="sr" for="slugInput">Add by slug or link</label>
+          <input type="text" id="slugInput" placeholder="…or paste a slug / modrinth.com/mod/… link">
+          <button type="submit">Add</button>
+        </form>
+        <div class="list" id="results"><div class="empty">Search results appear here.</div></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Manifest · <span class="count" id="modCount">0</span> mods</h2>
+        <div class="actions">
+          <button type="button" id="importBtn" title="Load an existing manifest.json">Import</button>
+          <button type="button" id="clearBtn" class="danger">Clear all</button>
+          <input type="file" id="importFile" accept=".json,application/json" hidden>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="list" id="mods"></div>
+      </div>
+    </section>
+  </div>
+
+  <section class="panel out">
+    <div class="panel-head">
+      <h2>manifest.json</h2>
+      <div class="actions">
+        <button type="button" id="copyBtn">Copy</button>
+        <button type="button" id="downloadBtn" class="primary">Download manifest.json</button>
+      </div>
+    </div>
+    <div class="panel-body">
+      <ul class="issues" id="issues"></ul>
+      <pre id="preview"></pre>
+      <p class="hint">Put the file at <code>&lt;server&gt;/config/conduit/manifest.json</code> and restart the server. The manifest is only read at startup.</p>
+    </div>
+  </section>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+"use strict";
+const API = "https://api.modrinth.com/v2";
+const STORE_KEY = "conduit-manifest-builder-v1";
+// Mirrors Conduit's InputValidator so the server never rejects what this page writes.
+const RE_MOD_ID = /^[a-z0-9_\-]{1,64}$/;
+const RE_VERSION = /^[A-Za-z0-9.+\-_]{1,64}$/;
+const RE_SHA512 = /^[0-9a-f]{128}$/;
+const FORBIDDEN = ["://", "../", "..\\", "/", "\\"];
+const MAX_MODS = 256;
+
+const $ = id => document.getElementById(id);
+const state = load() || { serverName: "My Conduit Server", mcVersion: "26.3", schema: 2, mods: [] };
+// Per-session cache: projectId -> list of compatible Fabric versions (or error).
+const versionCache = new Map();
+
+function load() {
+  try { return JSON.parse(localStorage.getItem(STORE_KEY)); } catch { return null; }
+}
+function save() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch { /* storage may be blocked on file:// */ }
+}
+
+function el(tag, attrs = {}, ...kids) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") node.className = v;
+    else if (k === "text") node.textContent = v;
+    else if (k.startsWith("on")) node.addEventListener(k.slice(2), v);
+    else if (v !== false && v != null) node.setAttribute(k, v === true ? "" : v);
+  }
+  for (const kid of kids.flat()) if (kid != null) node.append(kid.nodeType ? kid : document.createTextNode(kid));
+  return node;
+}
+
+let toastTimer;
+function toast(msg) {
+  const t = $("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("show"), 1800);
+}
+
+async function api(path) {
+  const res = await fetch(API + path, { headers: { Accept: "application/json" } });
+  if (res.status === 404) throw new Error("Not found on Modrinth");
+  if (!res.ok) throw new Error("Modrinth returned HTTP " + res.status);
+  return res.json();
+}
+
+function safeText(s) {
+  // Names may not contain URL or path characters; swap them for a dash.
+  let out = String(s || "").replace(/:\/\//g, " ").replace(/[\/\\]/g, "-").replace(/\.\./g, ".").trim();
+  return out.slice(0, 256);
+}
+function forbiddenIn(s) { return FORBIDDEN.find(f => String(s).includes(f)); }
+function defaultModId(slug) { return String(slug).toLowerCase().replace(/[^a-z0-9_\-]/g, "_").slice(0, 64); }
+function fmtNum(n) { return n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? (n / 1e3).toFixed(1) + "k" : String(n); }
+
+// ── Versions ──────────────────────────────────────────────────────────────
+async function compatibleVersions(projectId) {
+  const key = projectId + "@" + state.mcVersion;
+  if (versionCache.has(key)) return versionCache.get(key);
+  const p = (async () => {
+    const q = "?loaders=" + encodeURIComponent('["fabric"]') + "&game_versions=" + encodeURIComponent(JSON.stringify([state.mcVersion]));
+    const list = await api("/project/" + encodeURIComponent(projectId) + "/version" + q);
+    return list.map(v => {
+      const file = v.files.find(f => f.primary) || v.files[0];
+      return file && {
+        number: v.version_number, type: v.version_type, date: v.date_published,
+        sha512: (file.hashes && file.hashes.sha512 || "").toLowerCase(), filename: file.filename
+      };
+    }).filter(Boolean);
+  })();
+  versionCache.set(key, p);
+  p.catch(() => versionCache.delete(key));
+  return p;
+}
+
+async function refreshVersions(mod) {
+  mod._loading = true; mod._error = null; render();
+  try {
+    const versions = await compatibleVersions(mod.projectId);
+    mod._versions = versions;
+    if (state.schema === 1) {
+      const keep = versions.find(v => v.number === mod.version);
+      const pick = keep || versions.find(v => v.type === "release") || versions[0];
+      if (pick) { mod.version = pick.number; mod.sha512 = pick.sha512; }
+    }
+  } catch (e) {
+    mod._error = e.message; mod._versions = null;
+  }
+  mod._loading = false;
+  render();
+}
+
+// ── Adding mods ───────────────────────────────────────────────────────────
+function hasMod(projectId) { return state.mods.some(m => m.projectId === projectId); }
+
+function addProject(p) {
+  const projectId = p.project_id || p.id;
+  if (hasMod(projectId)) { toast(p.title + " is already in the manifest"); return; }
+  if (state.mods.length >= MAX_MODS) { toast("Conduit allows at most " + MAX_MODS + " mods"); return; }
+  const mod = {
+    projectId, slug: p.slug, title: p.title, icon: p.icon_url || "",
+    modId: defaultModId(p.slug), required: true, version: "", sha512: ""
+  };
+  state.mods.push(mod);
+  save();
+  toast("Added " + p.title);
+  refreshVersions(mod);
+  renderResults();
+}
+
+async function addBySlug(raw) {
+  let slug = String(raw || "").trim();
+  const m = slug.match(/modrinth\.com\/(?:mod|project|plugin|datapack)\/([^\/?#]+)/i);
+  if (m) slug = m[1];
+  if (!slug) return;
+  setStatus("searchStatus", "spin", "Looking up " + slug + "…");
+  try {
+    const p = await api("/project/" + encodeURIComponent(slug));
+    if (p.project_type && p.project_type !== "mod") throw new Error(p.title + " is a " + p.project_type + ", not a mod");
+    addProject(p);
+    $("slugInput").value = "";
+    setStatus("searchStatus", "", "");
+  } catch (e) {
+    setStatus("searchStatus", "err", e.message);
+  }
+}
+
+// ── Search ────────────────────────────────────────────────────────────────
+let lastResults = [];
+async function search(q) {
+  const facets = [["project_type:mod"]];
+  if ($("onlyCompatible").checked) facets.push(["categories:fabric"], ["versions:" + state.mcVersion]);
+  const params = new URLSearchParams({ query: q, limit: "15", index: q ? "relevance" : "downloads", facets: JSON.stringify(facets) });
+  setStatus("searchStatus", "spin", "Searching…");
+  try {
+    const data = await api("/search?" + params);
+    lastResults = data.hits;
+    setStatus("searchStatus", "", data.total_hits ? fmtNum(data.total_hits) + " results" : "");
+    renderResults();
+  } catch (e) {
+    setStatus("searchStatus", "err", e.message);
+  }
+}
+
+function setStatus(id, kind, text) {
+  const s = $(id);
+  s.className = "status" + (kind === "err" ? " err" : kind === "ok" ? " ok" : "");
+  s.replaceChildren();
+  if (kind === "spin") s.append(el("span", { class: "spinner" }), " ");
+  s.append(text);
+}
+
+function renderResults() {
+  const box = $("results");
+  box.replaceChildren();
+  if (!lastResults.length) {
+    box.append(el("div", { class: "empty", text: "No results. Try another search, or untick the compatibility filter." }));
+    return;
+  }
+  for (const p of lastResults) {
+    const added = hasMod(p.project_id);
+    const fabric = (p.categories || []).includes("fabric") || (p.display_categories || []).includes("fabric");
+    const forVersion = (p.versions || []).includes(state.mcVersion);
+    const pills = [];
+    if (fabric && forVersion) pills.push(el("span", { class: "pill green", text: "FABRIC " + state.mcVersion }));
+    else pills.push(el("span", { class: "pill gold", text: "NO FABRIC " + state.mcVersion }));
+    box.append(el("div", { class: "card" },
+      p.icon_url ? el("img", { src: p.icon_url, alt: "", loading: "lazy" }) : el("div", { class: "noimg" }),
+      el("div", {},
+        el("div", { class: "title" }, p.title, ...pills),
+        el("div", { class: "desc", text: p.description || "" }),
+        el("div", { class: "meta", text: p.slug + " · " + fmtNum(p.downloads) + " downloads" })),
+      el("button", { class: added ? "" : "primary", disabled: added, onclick: () => addProject(p) }, added ? "Added" : "Add")));
+  }
+}
+
+// ── Manifest list ─────────────────────────────────────────────────────────
+function problemsFor(mod) {
+  const out = [];
+  if (!RE_MOD_ID.test(mod.modId)) out.push(["err", "Mod ID must be 1–64 characters of a–z, 0–9, _ or -."]);
+  if (mod._error) out.push(["err", "Couldn't check Modrinth: " + mod._error]);
+  else if (mod._versions && !mod._versions.length) {
+    if (state.schema === 2) {
+      out.push(["warn", "No Fabric " + state.mcVersion + " build: the server will skip this mod at startup."]);
+    } else if (RE_VERSION.test(mod.version) && RE_SHA512.test(mod.sha512)) {
+      // An imported pin for another version is kept: handy for testing Conduit's failure screen.
+      out.push(["warn", "Pinned to " + mod.version + ", which has no Fabric " + state.mcVersion
+        + " build. Players' downloads of it will fail."]);
+    } else {
+      out.push(["err", "No Fabric " + state.mcVersion + " build to pin. Players could never download it."]);
+    }
+  }
+  if (state.schema === 1 && mod._versions && mod._versions.length) {
+    if (!RE_VERSION.test(mod.version)) out.push(["err", "Version \"" + mod.version + "\" has characters Conduit rejects."]);
+    if (!RE_SHA512.test(mod.sha512)) out.push(["err", "Modrinth has no SHA-512 hash for this file."]);
+  }
+  return out;
+}
+
+function render() {
+  $("serverName").value !== state.serverName && document.activeElement !== $("serverName") && ($("serverName").value = state.serverName);
+  $("mcVersion").value !== state.mcVersion && document.activeElement !== $("mcVersion") && ($("mcVersion").value = state.mcVersion);
+  $("fmt2").classList.toggle("on", state.schema === 2);
+  $("fmt1").classList.toggle("on", state.schema === 1);
+  $("fmt2").setAttribute("aria-checked", state.schema === 2);
+  $("fmt1").setAttribute("aria-checked", state.schema === 1);
+  $("fmtHint").textContent = state.schema === 2
+    ? "The server picks the newest Fabric build and its hash at every startup."
+    : "Exact versions and SHA-512 hashes are written into the file.";
+  $("modCount").textContent = state.mods.length;
+
+  const box = $("mods");
+  box.replaceChildren();
+  if (!state.mods.length) box.append(el("div", { class: "empty", text: "No mods yet. Add some from the search on the left." }));
+  state.mods.forEach((mod, i) => {
+    const problems = problemsFor(mod);
+    const worst = problems.some(p => p[0] === "err") ? "err" : problems.length ? "warn" : "";
+    const latest = mod._versions && mod._versions[0];
+
+    let versionField;
+    if (state.schema === 1) {
+      const sel = el("select", { disabled: !mod._versions || !mod._versions.length, onchange: e => {
+        const v = mod._versions.find(x => x.number === e.target.value);
+        if (v) { mod.version = v.number; mod.sha512 = v.sha512; save(); renderOutput(); }
+      } });
+      if (mod._loading) sel.append(el("option", { text: "Loading…" }));
+      else if ((!mod._versions || !mod._versions.length) && RE_VERSION.test(mod.version)) sel.append(el("option", { text: mod.version + " (not for " + state.mcVersion + ")" }));
+      else if (!mod._versions || !mod._versions.length) sel.append(el("option", { text: "No compatible version" }));
+      else for (const v of mod._versions) {
+        sel.append(el("option", { value: v.number, selected: v.number === mod.version, text: v.number + (v.type !== "release" ? " (" + v.type + ")" : "") }));
+      }
+      versionField = el("label", { class: "field" }, "Pinned version", sel);
+    } else {
+      versionField = el("label", { class: "field" }, "Version",
+        el("input", { type: "text", disabled: true, value: mod._loading ? "Checking…" : latest ? "latest: " + latest.number : "—" }));
+    }
+
+    const idInput = el("input", { type: "text", value: mod.modId, class: RE_MOD_ID.test(mod.modId) ? "" : "bad",
+      title: "Fabric mod id (from the mod's fabric.mod.json). Usually the same as the slug.",
+      oninput: e => { mod.modId = e.target.value.trim(); e.target.classList.toggle("bad", !RE_MOD_ID.test(mod.modId)); save(); renderOutput(); },
+      onchange: () => render() });
+
+    const req = el("label", { class: "switch", title: "Required mods must be installed to join" },
+      el("input", { type: "checkbox", checked: mod.required, onchange: e => { mod.required = e.target.checked; save(); render(); } }),
+      el("span", { class: "track" }), mod.required ? "Required" : "Optional");
+
+    box.append(el("div", { class: "mod " + worst },
+      mod.icon ? el("img", { src: mod.icon, alt: "", loading: "lazy", style: "width:40px;height:40px;border-radius:6px" }) : el("div", { class: "noimg", style: "width:40px;height:40px;border-radius:6px;background:#0a141e" }),
+      el("div", { style: "min-width:0" },
+        el("div", { class: "title" },
+          el("a", { href: "https://modrinth.com/mod/" + encodeURIComponent(mod.slug), target: "_blank", rel: "noopener noreferrer", text: mod.title }),
+          mod._loading ? el("span", { class: "pill blue" }, el("span", { class: "spinner", style: "width:9px;height:9px;border-width:2px" }), " CHECKING")
+            : mod._versions && mod._versions.length ? el("span", { class: "pill green", text: "OK" })
+            : mod._versions ? el("span", { class: "pill gold", text: "NO BUILD" }) : null),
+        el("div", { class: "meta", text: mod.slug + " · " + mod.projectId }),
+        el("div", { class: "mod-fields" },
+          el("label", { class: "field" }, "Mod ID", idInput),
+          versionField,
+          req),
+        ...problems.map(([kind, text]) => el("div", { class: "problem " + kind, text: (kind === "err" ? "✖ " : "⚠ ") + text }))),
+      el("button", { class: "danger", title: "Remove " + mod.title, "aria-label": "Remove " + mod.title, onclick: () => {
+        state.mods.splice(i, 1); save(); render(); renderResults(); toast("Removed " + mod.title);
+      } }, "✕")));
+  });
+  renderOutput();
+}
+
+// ── Output ────────────────────────────────────────────────────────────────
+function buildManifest() {
+  const name = state.serverName.trim();
+  if (state.schema === 2) {
+    return {
+      schemaVersion: 2,
+      manifestVersion: 1,
+      serverName: name,
+      mods: state.mods.map(m => {
+        const entry = { slug: m.slug, required: m.required };
+        if (m.modId && m.modId !== m.slug) entry.modId = m.modId;
+        return entry;
+      })
+    };
+  }
+  return {
+    schemaVersion: 1,
+    manifestVersion: 1,
+    serverName: name,
+    mods: state.mods.map(m => ({
+      modId: m.modId,
+      displayName: safeText(m.title) || m.modId,
+      requiredVersion: m.version,
+      required: m.required,
+      modrinthProjectId: m.projectId,
+      hashAlgorithm: "SHA-512",
+      expectedHash: m.sha512
+    }))
+  };
+}
+
+function manifestIssues() {
+  const issues = [];
+  const name = state.serverName.trim();
+  if (!name) issues.push(["err", "Server name is empty."]);
+  else if (forbiddenIn(name)) issues.push(["err", "Server name can't contain \"" + forbiddenIn(name) + "\"."]);
+  if (!state.mods.length) issues.push(["warn", "No mods added: players will join without installing anything."]);
+  const ids = new Map();
+  for (const m of state.mods) {
+    for (const [kind, text] of problemsFor(m)) issues.push([kind, m.title + ": " + text]);
+    if (m._loading) issues.push(["warn", m.title + ": still checking Modrinth…"]);
+    if (ids.has(m.modId)) issues.push(["err", "Mod ID \"" + m.modId + "\" is used by both " + ids.get(m.modId) + " and " + m.title + "."]);
+    ids.set(m.modId, m.title);
+  }
+  return issues;
+}
+
+function renderOutput() {
+  const json = JSON.stringify(buildManifest(), null, 2);
+  $("preview").textContent = json;
+  const issues = manifestIssues();
+  const list = $("issues");
+  list.replaceChildren(...issues.map(([k, t]) => el("li", { class: k, text: t })));
+  const blocking = issues.some(i => i[0] === "err");
+  $("downloadBtn").title = blocking ? "Fix the errors above first" : "";
+  $("downloadBtn").disabled = blocking;
+  return json;
+}
+
+// ── Import ────────────────────────────────────────────────────────────────
+async function importManifest(text) {
+  let data;
+  try { data = JSON.parse(text); } catch { toast("That file isn't valid JSON"); return; }
+  if (!data || !Array.isArray(data.mods)) { toast("No \"mods\" list in that file"); return; }
+  const schema = data.schemaVersion === 2 ? 2 : 1;
+  state.schema = schema;
+  if (typeof data.serverName === "string") state.serverName = data.serverName;
+  state.mods = [];
+  render();
+  let failed = 0;
+  for (const entry of data.mods) {
+    const ref = schema === 2 ? entry.slug : (entry.modrinthProjectId || entry.modId);
+    if (!ref) { failed++; continue; }
+    try {
+      const p = await api("/project/" + encodeURIComponent(ref));
+      if (hasMod(p.id)) continue;
+      const mod = {
+        projectId: p.id, slug: p.slug, title: p.title, icon: p.icon_url || "",
+        modId: entry.modId || defaultModId(p.slug), required: entry.required !== false,
+        version: schema === 1 ? entry.requiredVersion || "" : "", sha512: schema === 1 ? entry.expectedHash || "" : ""
+      };
+      state.mods.push(mod);
+      refreshVersions(mod);
+    } catch { failed++; }
+  }
+  save();
+  render();
+  renderResults();
+  toast("Imported " + state.mods.length + " mod(s)" + (failed ? ", " + failed + " not found" : ""));
+}
+
+// ── Wiring ────────────────────────────────────────────────────────────────
+$("serverName").addEventListener("input", e => { state.serverName = e.target.value; save(); renderOutput(); });
+let mcTimer;
+$("mcVersion").addEventListener("input", e => {
+  state.mcVersion = e.target.value.trim();
+  save();
+  clearTimeout(mcTimer);
+  mcTimer = setTimeout(() => {
+    state.mods.forEach(m => refreshVersions(m));
+    if (lastResults.length || $("query").value) search($("query").value.trim());
+  }, 500);
+});
+$("fmt2").addEventListener("click", () => { state.schema = 2; save(); render(); });
+$("fmt1").addEventListener("click", () => {
+  state.schema = 1; save();
+  state.mods.forEach(m => m._versions ? (m.version || refreshVersions(m)) : refreshVersions(m));
+  render();
+});
+$("searchForm").addEventListener("submit", e => { e.preventDefault(); search($("query").value.trim()); });
+$("onlyCompatible").addEventListener("change", () => search($("query").value.trim()));
+$("slugForm").addEventListener("submit", e => { e.preventDefault(); addBySlug($("slugInput").value); });
+$("clearBtn").addEventListener("click", () => {
+  if (!state.mods.length || !confirm("Remove all " + state.mods.length + " mods from the manifest?")) return;
+  state.mods = []; save(); render(); renderResults();
+});
+$("importBtn").addEventListener("click", () => $("importFile").click());
+$("importFile").addEventListener("change", async e => {
+  const file = e.target.files[0];
+  if (file) await importManifest(await file.text());
+  e.target.value = "";
+});
+$("copyBtn").addEventListener("click", async () => {
+  const json = renderOutput();
+  try { await navigator.clipboard.writeText(json); toast("Copied manifest.json"); }
+  catch {
+    const r = document.createRange(); r.selectNodeContents($("preview"));
+    const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+    toast("Press Ctrl+C to copy");
+  }
+});
+$("downloadBtn").addEventListener("click", () => {
+  const blob = new Blob([renderOutput() + "\n"], { type: "application/json" });
+  const a = el("a", { href: URL.createObjectURL(blob), download: "manifest.json" });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  toast("Downloaded manifest.json");
+});
+
+render();
+state.mods.forEach(m => refreshVersions(m));
+search("");
+</script>
+</body>
+</html>

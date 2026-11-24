@@ -81,6 +81,23 @@ public final class HotwireServerSwitch {
         return new Changes(jars, off, on);
     }
 
+    /** True when every jar's mod is running and enabled at that jar's version. */
+    public static boolean running(List<Path> jars) {
+        if (jars.isEmpty()) return false;
+        try {
+            Map<String, HotwireBridge.RunningMod> running = new HashMap<>();
+            for (var mod : HotwireBridge.runningMods()) running.put(mod.id(), mod);
+            for (Path jar : jars) {
+                JarMod mod = read(jar);
+                var current = running.get(mod.id());
+                if (current == null || !current.on() || !current.version().equals(mod.version())) return false;
+            }
+            return true;
+        } catch (Exception | LinkageError e) {
+            return false;
+        }
+    }
+
     public static boolean matches(ServerInstallRecord target) {
         try { return changes(target).empty(); }
         catch (Exception | LinkageError e) { return false; }

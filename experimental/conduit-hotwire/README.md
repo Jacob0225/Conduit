@@ -17,7 +17,7 @@ See upstream `API.md` and `LICENSE.md` for API and distribution terms.
 Conduit downloads mods through its existing installer. After installation,
 choose **Load live**. Accept Hotwire's own opening prompt, then click Load live
 again. Conduit submits the downloaded local jars in one tagged change request,
-shows every plan line for confirmation, and finally offers Apply. Only a DONE
+shows every plan line on one scrollable review screen, and offers Apply. Only a DONE
 result with no work deferred to next launch enables Join. Futures are never
 blocked on the game thread. Refusals, cancellation, exceptions, and missing
 Hotwire fall back to an explicit Restart action.
@@ -40,3 +40,20 @@ From one experimental version directory, run `./gradlew build`. Output is in
 that directory's `build/libs`. The shared bridge is compiled into each client
 source set. Use a disposable instance for testing. Full in-game integration
 testing is required before distributing these experimental jars.
+
+## Loader copies
+
+| Folder | Loader / toolchain | Java | Status |
+| --- | --- | --- | --- |
+| `fabric/26.3`, `fabric/26.2`, `fabric/1.21.1` | Fabric Loom | 25 / 25 / 21 | build |
+| `neoforge/26.2`, `neoforge/1.21.1` | ModDevGradle | 25 / 21 | build |
+| `forge/1.21.1` | ForgeGradle 7 | 21 | build |
+| `forge/26.2` | ForgeGradle 7 (EventBus 7) | 25 | build |
+
+All copies share the same UI: title-screen gear, tabbed settings (slider, theme
+picker), sounds and particles. Hotwire only exists on Fabric; on NeoForge and
+Forge the reflection bridge reports it missing and the install screen falls back
+to Restart. `HotwireServerSwitch` is Fabric-only and excluded from those builds.
+
+Forge 1.21.1 loads mods with Mojang names at runtime (`ModLauncher naming: mcp`),
+so its jar needs no remapping.

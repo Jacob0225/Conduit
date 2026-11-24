@@ -31,21 +31,27 @@ public final class InstanceRestarter {
 
     private InstanceRestarter() {}
 
-    /** Relaunch and tear down the current instance. */
+    /**
+     * True when this JVM's own command line can be read, so {@link #restart()}
+     * will relaunch the game rather than only closing it. Windows does not
+     * expose another process's arguments, so this is usually false there.
+     */
+    public static boolean canRelaunch() {
+        return !relaunchCommand().isEmpty();
+    }
+
+    /** Relaunch (when possible) and tear down the current instance. */
     public static void restart() {
         LOGGER.info("Restarting instance to load updated Conduit mod set");
 
-        Optional<String> ownCommand = ProcessHandle.current().info().commandLine();
-        if (ownCommand.isPresent()) {
+        List<String> argv = relaunchCommand();
+        if (!argv.isEmpty()) {
             try {
-                List<String> argv = shellSplit(ownCommand.get());
-                if (!argv.isEmpty()) {
-                    ProcessBuilder pb = new ProcessBuilder(argv);
-                    pb.directory(FabricLoader.getInstance().getGameDir().toFile());
-                    pb.inheritIO();
-                    pb.start();
-                    LOGGER.info("Spawned restart process ({} tokens)", argv.size());
-                }
+                ProcessBuilder pb = new ProcessBuilder(argv);
+                pb.directory(FabricLoader.getInstance().getGameDir().toFile());
+                pb.inheritIO();
+                pb.start();
+                LOGGER.info("Spawned restart process ({} tokens)", argv.size());
             } catch (IOException e) {
                 LOGGER.error("Failed to spawn restart process: {} — exiting only.", e.getMessage());
             }
@@ -58,6 +64,25 @@ public final class InstanceRestarter {
         Minecraft mc = Minecraft.getInstance();
         mc.setScreenAndShow(null);
         mc.stop();
+    }
+
+    /**
+     * Prefers the structured executable + argument array. Re-splitting the
+     * joined {@code commandLine()} string broke any argument containing a
+     * space (install paths, player names, quoted JVM options), because the JDK
+     * joins arguments with single spaces and no quoting.
+     */
+    private static List<String> relaunchCommand() {
+        ProcessHandle.Info info = ProcessHandle.current().info();
+        Optional<String> command = info.command();
+        Optional<String[]> arguments = info.arguments();
+        if (command.isPresent() && arguments.isPresent()) {
+            List<String> argv = new ArrayList<>();
+            argv.add(command.get());
+            argv.addAll(List.of(arguments.get()));
+            return argv;
+        }
+        return info.commandLine().map(InstanceRestarter::shellSplit).orElse(List.of());
     }
 
     /**
