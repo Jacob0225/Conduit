@@ -1,0 +1,12 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.jacob0225.conduit.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "mixins": [
+    "MixinMinecraftServerStatus"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

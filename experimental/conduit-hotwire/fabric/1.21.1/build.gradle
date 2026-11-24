@@ -1,0 +1,128 @@
+plugins {
+    id 'net.fabricmc.fabric-loom-remap' version "${loom_version}"
+    id 'maven-publish'
+}
+
+version = project.mod_version
+version = "${project.mod_version}-hotwire-experimental"
+group = project.maven_group
+
+ext.conduitTargets = [
+        [loader: "fabric",   minecraft: "26.2",    status: "scaffolded"],
+        [loader: "fabric",   minecraft: "26.1",    status: "scaffolded"],
+        [loader: "fabric",   minecraft: "1.21.11", status: "scaffolded"],
+        [loader: "fabric",   minecraft: "1.21.1",  status: "implemented"],
+        [loader: "fabric",   minecraft: "1.20.1",  status: "scaffolded"],
+        [loader: "neoforge", minecraft: "26.2",    status: "needs-platform-adapter"],
+        [loader: "neoforge", minecraft: "26.1",    status: "needs-platform-adapter"],
+        [loader: "neoforge", minecraft: "1.21.11", status: "needs-platform-adapter"],
+        [loader: "neoforge", minecraft: "1.21.1",  status: "needs-platform-adapter"],
+        [loader: "neoforge", minecraft: "1.20.1",  status: "needs-platform-adapter"],
+        [loader: "forge",    minecraft: "26.2",    status: "needs-platform-adapter"],
+        [loader: "forge",    minecraft: "26.1",    status: "needs-platform-adapter"],
+        [loader: "forge",    minecraft: "1.21.11", status: "needs-platform-adapter"],
+        [loader: "forge",    minecraft: "1.21.1",  status: "needs-platform-adapter"],
+        [loader: "forge",    minecraft: "1.20.1",  status: "needs-platform-adapter"],
+]
+
+base {
+    archivesName = project.archives_base_name
+}
+
+loom {
+    splitEnvironmentSourceSets()
+
+    mods {
+        "conduit" {
+            sourceSet sourceSets.main
+            sourceSet sourceSets.client
+        }
+    }
+}
+
+sourceSets.client.java.srcDir('../../shared')
+
+repositories {
+    // Loom adds the essential maven repositories automatically.
+    maven {
+        name = "Terraformers"
+        url = "https://maven.terraformersmc.com/"
+    }
+    maven {
+        name = "Modrinth"
+        url = "https://api.modrinth.com/maven"
+    }
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    mappings loom.officialMojangMappings()
+
+    modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+    modImplementation "maven.modrinth:modmenu:${project.modmenu_version}"
+}
+
+processResources {
+    inputs.property "version", project.version
+
+    filesMatching("fabric.mod.json") {
+        expand "version": inputs.properties.version
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.release = 21
+}
+
+java {
+    withSourcesJar()
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
+
+jar {
+    inputs.property "archivesName", project.base.archivesName
+
+    // Loom's splitEnvironmentSourceSets() puts client classes/resources in a
+    // separate 'client' source set. The default jar task only packages main,
+    // which silently drops the entire client half of the mod (ConduitClient,
+    // ClientManifestHandler, conduit.client.mixins.json, etc.). Without this,
+    // the published jar fails at load:
+    //   - MixinInitialisationError: conduit.client.mixins.json not in jar
+    //   - ClassNotFoundException: com.jacob0225.conduit.client.ConduitClient
+    from sourceSets.client.output
+
+    from("LICENSE") {
+        rename { "${it}_${inputs.properties.archivesName}" }
+    }
+}
+
+publishing {
+    publications {
+        create("mavenJava", MavenPublication) {
+            artifactId = project.archives_base_name
+            from components.java
+        }
+    }
+}
+
+tasks.register("conduitTargets") {
+    group = "conduit"
+    description = "Prints the Conduit loader/version build matrix."
+    doLast {
+        println "Conduit build targets:"
+        conduitTargets.each {
+            println " - ${it.loader.padRight(8)} ${it.minecraft.padRight(7)} ${it.status}"
+        }
+        println ""
+        println "Only Fabric ${minecraft_version} is currently wired to executable source sets."
+        println "Forge/NeoForge require platform entrypoints, metadata, and loader-specific adapters."
+    }
+}
+
+tasks.register("buildFabric1_21_1") {
+    group = "conduit"
+    description = "Builds the Fabric 1.21.1 target."
+    dependsOn "build"
+}
