@@ -68,7 +68,7 @@ public final class ConduitJoinInterceptor {
                 }
                 afterDisconnect = () -> Minecraft.getInstance().setScreenAndShow(
                         new ModSwitchScreen(payload.serverName(), current.parent(),
-                                current.address(), current.serverData()));
+                                current.address(), current.serverData(), record.ownedJarFilenames()));
                 return PortDiscovery.NEEDS_SETUP;
             }
 

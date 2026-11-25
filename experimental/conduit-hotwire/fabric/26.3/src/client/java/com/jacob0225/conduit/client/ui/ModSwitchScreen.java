@@ -26,14 +26,23 @@ public class ModSwitchScreen extends Screen {
     private final Screen parent;
     private final ServerAddress address;
     private final ServerData serverData;
+    private final java.util.List<String> modSet;
     private boolean openSoundPlayed;
 
     public ModSwitchScreen(String serverName, Screen parent, ServerAddress address, ServerData serverData) {
+        this(serverName, parent, address, serverData, java.util.List.of());
+    }
+
+    /** @param modSet the jars this server's restored mod set contains, listed on the restart screen */
+    public ModSwitchScreen(String serverName, Screen parent, ServerAddress address, ServerData serverData,
+                           java.util.Collection<String> modSet) {
         super(Component.literal("Conduit - Server Switch"));
         this.serverName = serverName != null && !serverName.isBlank() ? serverName : "this server";
         this.parent = parent;
         this.address = address;
         this.serverData = serverData;
+        this.modSet = modSet.stream().map(n -> n.endsWith(".jar") ? n.substring(0, n.length() - 4) : n)
+                .sorted().toList();
     }
 
     private int panelWidth() { return Math.min(this.width - 16, 400); }
@@ -51,8 +60,10 @@ public class ModSwitchScreen extends Screen {
 
         addRenderableWidget(new ConduitButton(x, b - 30, each, 20,
                 Component.literal(relaunch ? "Restart & join" : "Close game"), ConduitButton.Style.PRIMARY, btn -> {
-            LOGGER.info("Player confirmed restart for server switch to '{}'", serverName);
-            InstanceRestarter.restart();
+            LOGGER.info("Player chose restart for server switch to '{}'", serverName);
+            String reconnect = address == null ? null
+                    : com.jacob0225.conduit.restart.LaunchCommand.address(address.getHost(), address.getPort());
+            minecraft.setScreenAndShow(new RestartScreen(this, serverName, modSet, List.of(), reconnect, null));
         }).tooltip(relaunch ? "Restart Minecraft with this server's mods, then reconnect."
                 : "Minecraft closes. Start it again from your launcher, then reconnect."));
 

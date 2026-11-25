@@ -59,6 +59,15 @@ dependencies {
     implementation "net.fabricmc:fabric-loader:${project.loader_version}"
     implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
     implementation "com.terraformersmc:modmenu:${project.modmenu_version}"
+
+    // Unit tests for the pure-Java restart code (com.jacob0225.conduit.restart).
+    testImplementation platform("org.junit:junit-bom:5.11.4")
+    testImplementation "org.junit.jupiter:junit-jupiter"
+    testRuntimeOnly "org.junit.platform:junit-platform-launcher"
+}
+
+test {
+    useJUnitPlatform()
 }
 
 processResources {
@@ -91,6 +100,7 @@ jar {
     //   - ClassNotFoundException: com.jacob0225.conduit.client.ConduitClient
     from sourceSets.client.output
 
+    from("THIRD_PARTY_NOTICES.md")
     from("LICENSE") {
         rename { "${it}_${inputs.properties.archivesName}" }
     }

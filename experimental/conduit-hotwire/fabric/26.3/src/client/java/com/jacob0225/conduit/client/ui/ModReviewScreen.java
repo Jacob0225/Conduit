@@ -755,17 +755,36 @@ public class ModReviewScreen extends Screen {
         applyPhaseButtons();
     }
 
+    /** Opens the restart confirmation; the jar swap only happens once the player confirms. */
     private void restart() {
-        try {
-            if (targetRecord != null) HotwireServerSwitch.prepareRestart(targetRecord);
-        } catch (Exception e) {
-            LOGGER.warn("Could not prepare the target mod set for restart", e);
-            setFooter("Could not prepare mod files. Check the log before restarting.", ConduitUi.RED,
-                    ConduitUi.Icon.WARN);
-            ConduitSounds.failure();
-            return;
+        List<String> added = new ArrayList<>();
+        for (int i = 0; i < requiredMods.size(); i++) {
+            if (rowState[i] == RowState.DONE) {
+                ModEntry mod = requiredMods.get(i);
+                added.add(mod.displayName() + " " + mod.requiredVersion());
+            }
         }
-        InstanceRestarter.restart();
+        List<String> removed = targetRecord != null ? putAway(targetRecord) : List.of();
+        String reconnect = serverAddress == null ? null
+                : com.jacob0225.conduit.restart.LaunchCommand.address(serverAddress.getHost(), serverAddress.getPort());
+        ServerInstallRecord target = targetRecord;
+        minecraft.setScreenAndShow(new RestartScreen(this, payload.serverName(), added, removed, reconnect,
+                () -> { if (target != null) HotwireServerSwitch.prepareRestart(target); }));
+    }
+
+    /** Other servers' Conduit jars currently in mods/ that the restart will put away. */
+    private static List<String> putAway(ServerInstallRecord target) {
+        java.nio.file.Path mods = FabricLoader.getInstance().getGameDir().resolve("mods");
+        java.util.Set<String> names = new java.util.TreeSet<>();
+        for (ServerInstallRecord record : ServerInstallRecord.allRecords()) {
+            for (String filename : record.managedJarFilenames()) {
+                if (!target.ownedJarFilenames().contains(filename)
+                        && java.nio.file.Files.isRegularFile(mods.resolve(filename))) {
+                    names.add(filename.endsWith(".jar") ? filename.substring(0, filename.length() - 4) : filename);
+                }
+            }
+        }
+        return List.copyOf(names);
     }
 
     private void skipAndJoin() {
