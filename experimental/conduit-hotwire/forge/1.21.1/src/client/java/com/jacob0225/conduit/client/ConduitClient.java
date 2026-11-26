@@ -31,6 +31,8 @@ public final class ConduitClient {
 
     public static void initialize(FMLJavaModLoadingContext context) {
         ConduitUi.applyTheme(ClientConfig.load().theme());
+        dev.conduit.hotload.LiveLoad.prepare(); // find a Java that can attach, before it's needed
+        com.jacob0225.conduit.client.devtest.AutoJoinTest.installIfRequested(); // dev-only, needs -Dconduit.autotest
         verifyInstallRecords();
         context.registerExtensionPoint(ConfigScreenHandler.ConfigScreenFactory.class,
                 () -> new ConfigScreenHandler.ConfigScreenFactory((mc, parent) -> new ConduitSettingsScreen(parent)));

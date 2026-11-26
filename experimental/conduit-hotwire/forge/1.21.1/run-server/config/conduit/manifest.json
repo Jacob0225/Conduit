@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 2,
+  "manifestVersion": 1,
+  "serverName": "Conduit Forge live-load test",
+  "mods": [
+    { "slug": "balm", "required": true },
+    { "slug": "waystones", "required": true },
+    { "slug": "carry-on", "required": true },
+    { "slug": "macaws-windows", "required": true },
+    { "slug": "comforts", "required": true },
+    { "slug": "travelersbackpack", "required": true }
+  ]
+}

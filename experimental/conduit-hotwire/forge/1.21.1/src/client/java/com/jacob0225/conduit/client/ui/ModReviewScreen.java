@@ -1,6 +1,5 @@
 package com.jacob0225.conduit.client.ui;
 
-import com.jacob0225.conduit.client.compat.HotwireBridge;
 import com.jacob0225.conduit.client.config.ClientConfig;
 import com.jacob0225.conduit.client.download.DependencyResolver;
 import com.jacob0225.conduit.client.download.InstalledModIndex;
@@ -123,7 +122,7 @@ public class ModReviewScreen extends Screen {
             setFooter("No required mods are missing.", ConduitUi.GREEN, ConduitUi.Icon.CHECK);
         } else {
             setFooter(hotwireReady()
-                    ? "Download to join. Hotwire can load supported mods without restarting."
+                    ? "Download to join. The mods can load live, without restarting."
                     : "Download the missing mods. " + reloadHint("them"), ConduitUi.MUTED, ConduitUi.Icon.INFO);
         }
     }
@@ -195,8 +194,47 @@ public class ModReviewScreen extends Screen {
         }
     }
 
+    /** Live loading is possible here (Conduit's own loader found a Java that can attach). */
     private boolean hotwireReady() {
-        return !hotwireAttempted && hotwireEligible && HotwireBridge.available();
+        return !hotwireAttempted && hotwireEligible && dev.conduit.hotload.LiveLoad.available();
+    }
+
+    /** Load live was pressed once: the freeze warning is showing and the button says Start loading. */
+    private boolean liveWarned;
+
+    /** Frames to wait before running the live load, so "Loading…" is on screen during the freeze. */
+    private int liveLoadIn;
+
+    private void startConduitLiveLoad() {
+        hotwireAttempted = true;
+        phase = Phase.LIVE;
+        setFooter("Loading the mods into the game...", ConduitUi.ACCENT, ConduitUi.Icon.INFO);
+        applyPhaseButtons();
+        ConduitSounds.start();
+        liveLoadIn = 3;
+    }
+
+    private void runConduitLiveLoad() {
+        try {
+            dev.conduit.hotload.LiveLoad.load(hotwireJars).whenComplete((ids, error) -> minecraft.execute(() -> {
+                if (error != null) {
+                    hotwireFallback(error, "Live loading failed while reloading resources.");
+                    return;
+                }
+                hotwireApplied = true;
+                liveWarned = false;
+                phase = Phase.DONE;
+                finishedAt = ConduitUi.now();
+                setFooter("Loaded " + ids.size() + (ids.size() == 1 ? " mod" : " mods") + " live. Press Join server.",
+                        ConduitUi.GREEN, ConduitUi.Icon.CHECK);
+                Arrays.fill(rowState, RowState.READY);
+                ConduitSounds.success();
+                progressShower(ConduitUi.GREEN);
+                applyPhaseButtons();
+            }));
+        } catch (Throwable t) {
+            hotwireFallback(t, "Live loading failed: " + t.getMessage() + ".");
+        }
     }
 
     /** "Restart to load X." or, where Conduit can only close the game, "Reopen the game to load X." */
@@ -231,8 +269,9 @@ public class ModReviewScreen extends Screen {
                     label = "Join server";
                     tip = null;
                 } else if (hotwireReady() && !hotwireJars.isEmpty()) {
-                    label = "Load live";
-                    tip = "Use Hotwire to load the new mods into the running game without restarting.";
+                    label = liveWarned ? "Start loading" : "Load live";
+                    tip = liveWarned ? "The game freezes while the mods load. That's expected."
+                            : "Load the new mods into the running game without restarting.";
                 } else {
                     label = restartLabel();
                     tip = InstanceRestarter.canRelaunch()
@@ -291,6 +330,7 @@ public class ModReviewScreen extends Screen {
 
     @Override
     public void render(GuiGraphics g, int mx, int my, float delta) {
+        if (liveLoadIn > 0 && --liveLoadIn == 0) runConduitLiveLoad();
         // 1.21.1 Screen.render paints the background itself, so draw ours first and
         // make renderBackground a no-op (otherwise it would cover the panel).
         ConduitUi.backdrop(g, this.width, this.height);
@@ -309,7 +349,8 @@ public class ModReviewScreen extends Screen {
         ConduitUi.divider(g, l + 10, r - 10, t + 44);
         renderProgress(g, l, t, r);
         int listTopY = t + (compact() ? 74 : 80);
-        renderModRows(g, l + 12, listTopY, r - 12, b - 52, mx, my);
+        if (showLiveNotice()) renderLiveNotice(g, l + 12, listTopY, r - 12, b - 52);
+        else renderModRows(g, l + 12, listTopY, r - 12, b - 52, mx, my);
         renderFooter(g, l, r, b);
 
         super.render(g, mx, my, delta);
@@ -339,7 +380,7 @@ public class ModReviewScreen extends Screen {
         String statusLabel = switch (phase) {
             case PROMPT -> requiredMods.isEmpty() ? "UP TO DATE" : "SETUP";
             case DOWNLOADING -> "WORKING";
-            case LIVE -> "HOTWIRE";
+            case LIVE -> "LIVE";
             case DONE -> hotwireApplied ? "READY" : "INSTALLED";
             case ERROR -> "ATTENTION";
         };
@@ -367,7 +408,7 @@ public class ModReviewScreen extends Screen {
             left = requiredMods.size() + " required";
             if (config.showOptionalMods() && optionalCount > 0) left += "  +" + optionalCount + " optional";
         } else if (phase == Phase.LIVE) {
-            left = "Applying the plan to the running game";
+            left = "Loading into the running game";
         } else {
             left = finishedCount + " of " + requiredMods.size() + " installed";
             if (failedCount > 0) left += "  ·  " + failedCount + " failed";
@@ -473,6 +514,33 @@ public class ModReviewScreen extends Screen {
                     ChatFormatting.ITALIC).getVisualOrderText());
         }
         ConduitUi.tooltip(g, lines, mx, my);
+    }
+
+    private boolean showLiveNotice() {
+        return phase == Phase.LIVE || (phase == Phase.DONE && liveWarned && !hotwireApplied);
+    }
+
+    /** The freeze warning, shown before loading starts and left on screen while the game is busy. */
+    private void renderLiveNotice(GuiGraphics g, int left, int top, int right, int bottom) {
+        boolean loading = phase == Phase.LIVE;
+        String heading = loading ? "Loading mods. The game isn't frozen for good." : "Before you start";
+        String body = "Minecraft stops responding while the mods load. With big mods like Create this "
+                + "can take a minute or more, and Windows may say the game is not responding. "
+                + "That's expected. Don't close the game; it comes back on its own.";
+        int width = Math.max(80, right - left - 24);
+        var lines = ConduitUi.font().split(Component.literal(body), width);
+        int boxH = 24 + lines.size() * 11;
+        int y = top + Math.max(0, (bottom - top - boxH) / 2);
+        g.fill(left, y, right, y + boxH, 0x66000000);
+        g.fill(left, y, left + 2, y + boxH, ConduitUi.GOLD);
+        ConduitUi.icon(g, ConduitUi.Icon.WARN, left + 10, y + 7, ConduitUi.GOLD);
+        ConduitUi.text(g, Component.literal(ConduitUi.trim(heading, width - 14)).withStyle(ChatFormatting.BOLD),
+                left + 22, y + 7, ConduitUi.GOLD);
+        int ly = y + 20;
+        for (var line : lines) {
+            g.drawString(ConduitUi.font(), line, left + 12, ly, ConduitUi.TEXT, false);
+            ly += 11;
+        }
     }
 
     private void renderFooter(GuiGraphics g, int l, int r, int b) {
@@ -659,71 +727,21 @@ public class ModReviewScreen extends Screen {
     private void finishInstallation() {
         if (hotwireApplied) { skipAndJoin(); return; }
         if (!hotwireReady() || hotwireJars.isEmpty()) { restart(); return; }
-        try {
-            if (!HotwireBridge.promptAccepted()) {
-                // Hotwire shows its own one-time prompt; nothing happens until it is accepted.
-                setFooter("Accept Hotwire's prompt, then press Load live again.", ConduitUi.YELLOW,
-                        ConduitUi.Icon.INFO);
-                ConduitSounds.notice();
-                return;
-            }
-            hotwireAttempted = true;
-            phase = Phase.LIVE;
-            setFooter("Preparing the Hotwire plan...", ConduitUi.ACCENT, ConduitUi.Icon.INFO);
+        if (!liveWarned) {
+            // The game stops drawing while mods load; say so first, so nobody thinks it crashed.
+            liveWarned = true;
+            setFooter("", ConduitUi.MUTED, ConduitUi.Icon.INFO);
+            ConduitSounds.notice();
             applyPhaseButtons();
-            ConduitSounds.start();
-            HotwireBridge.plan(hotwireJars).whenComplete((plan, failure) -> minecraft.execute(() -> {
-                if (failure != null) { hotwireFallback(failure, "Live loading failed (see log)."); return; }
-                try {
-                    if (!plan.canApply()) {
-                        plan.cancel();
-                        hotwireFallback(null, "Hotwire can't load this mod set live.");
-                        return;
-                    }
-                    String description = plan.description();
-                    List<String> lines = description.isBlank() ? List.of()
-                            : Arrays.stream(description.split("\\n")).filter(s -> !s.isBlank()).toList();
-                    minecraft.setScreen(new HotwirePlanScreen(this, payload.serverName(), lines,
-                            accepted -> onPlanDecision(plan, accepted)));
-                } catch (Exception e) { hotwireFallback(e, "Live loading failed (see log)."); }
-            }));
-        } catch (Exception | LinkageError e) {
-            hotwireAttempted = true;
-            hotwireFallback(e, "Live loading failed (see log).");
-        }
-    }
-
-    private void onPlanDecision(HotwireBridge.Plan plan, boolean accepted) {
-        minecraft.setScreen(this);
-        if (!accepted) {
-            try { plan.cancel(); } catch (Exception e) { LOGGER.warn("Hotwire cancel failed", e); }
-            hotwireFallback(null, "Live loading cancelled.");
             return;
         }
-        phase = Phase.LIVE;
-        setFooter("Applying the Hotwire plan...", ConduitUi.ACCENT, ConduitUi.Icon.INFO);
-        applyPhaseButtons();
-        try {
-            plan.accept().whenComplete((done, error) -> minecraft.execute(() -> {
-                if (error != null || !Boolean.TRUE.equals(done)) {
-                    hotwireFallback(error, "Hotwire could not finish live loading.");
-                    return;
-                }
-                hotwireApplied = true;
-                phase = Phase.DONE;
-                finishedAt = ConduitUi.now();
-                setFooter("Mods loaded live. Press Join server to reconnect.", ConduitUi.GREEN, ConduitUi.Icon.CHECK);
-                Arrays.fill(rowState, RowState.READY);
-                ConduitSounds.success();
-                        progressShower(ConduitUi.GREEN);
-                applyPhaseButtons();
-            }));
-        } catch (Exception e) { hotwireFallback(e, "Hotwire could not start live loading."); }
+        startConduitLiveLoad();
     }
 
     private void hotwireFallback(Throwable error, String reason) {
         phase = Phase.DONE;
-        if (error != null) LOGGER.warn("Hotwire live loading failed; restart required", error);
+        liveWarned = false;
+        if (error != null) LOGGER.warn("Live loading failed; restart required", error);
         setFooter(reason + " " + reloadHint("the mods"), ConduitUi.YELLOW, ConduitUi.Icon.WARN);
         ConduitSounds.notice();
         applyPhaseButtons();

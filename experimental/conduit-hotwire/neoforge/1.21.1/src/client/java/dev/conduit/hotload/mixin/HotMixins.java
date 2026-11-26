@@ -87,11 +87,18 @@ public final class HotMixins {
             snapshot = new HashSet<>(tracked);
             tracked.clear(); // let Mixin accept targets that are already loaded
         }
+        // Select while holding Mixin's re-entrance lock, as at startup (where selection runs inside
+        // the first transform): classes loaded meanwhile (config plugins) must not start another selection.
+        Object lock = Fields.get(processor, "lock");
+        MethodHandle push = HotLoader.implLookup().findVirtual(lock.getClass(), "push", MethodType.methodType(lock.getClass()));
+        MethodHandle pop = HotLoader.implLookup().findVirtual(lock.getClass(), "pop", MethodType.methodType(lock.getClass()));
+        push.invoke(lock);
         try {
             MethodHandle select = HotLoader.implLookup().findVirtual(processor.getClass(), "select",
                     MethodType.methodType(void.class, MixinEnvironment.class));
             select.invoke(processor, MixinEnvironment.getCurrentEnvironment());
         } finally {
+            pop.invoke(lock);
             synchronized (tracked) { tracked.addAll(snapshot); }
         }
         if ((boolean) Fields.getBoolean(processor, "errorState")) {

@@ -16,12 +16,28 @@ sourceSets.main {
     resources.srcDir 'src/client/resources'
 }
 
+// Forge loads a dev mod from one folder: build classes and resources into the same one (as the MDK does).
+sourceSets.each {
+    def dir = layout.buildDirectory.dir("sourcesSets/$it.name")
+    it.output.resourcesDir = dir
+    it.java.destinationDirectory = dir
+}
+
 minecraft {
     mappings channel: 'official', version: project.minecraft_version
     runs {
         configureEach { workingDir = layout.projectDirectory.dir('run') }
-        register('client')
-        register('server') { args '--nogui' }
+        register('client') {
+            // Dev-only end-to-end test: -Pautotest=host:port [-PautotestMods=id1,id2]
+            systemProperty 'conduit.autotest', (project.findProperty('autotest') ?: '').toString()
+            systemProperty 'conduit.autotest.mods', (project.findProperty('autotestMods') ?: '').toString()
+            // A dev run has no jar manifest, so Mixin doesn't see the MixinConfigs attribute.
+            args '--mixin.config', 'conduit.mixins.json', '--mixin.config', 'conduit.client.mixins.json'
+        }
+        register('server') {
+            workingDir = layout.projectDirectory.dir('run-server')
+            args '--nogui', '--mixin.config', 'conduit.mixins.json'
+        }
     }
 }
 
