@@ -40,23 +40,31 @@ public final class ConduitJoinInterceptor {
         LOGGER.info("Server advertised Conduit HTTP port {} during login to {}:{}", httpPort, host, gamePort);
         return ManifestHttpClient.fetch(host, httpPort, endpoint.publicBaseUrl()).handle((manifestOpt, error) -> {
             if (error != null || manifestOpt.isEmpty()) return PortDiscovery.ENDPOINT_UNREACHABLE;
-            ManifestPayload payload = manifestOpt.get();
-            ServerInstallRecord record = ServerInstallRecord.forServer(host, gamePort);
-            if (record.isSatisfied(payload)) {
-                ModStashManager.ReconcileResult result = new ModStashManager()
-                        .reconcile(record.key(), record.ownedJarFilenames());
-                if (!result.changed()) return PortDiscovery.READY;
-                afterDisconnect = () -> Minecraft.getInstance().setScreen(
-                        new ModSwitchScreen(payload.serverName(), current.parent(),
-                                current.address(), current.serverData()));
-                return PortDiscovery.NEEDS_SETUP;
-            }
-            int required = (int) payload.mods().stream().filter(ModEntry::required).count();
-            LOGGER.info("Manifest requires setup ({} required mod(s)); ending login before registry sync", required);
-            afterDisconnect = () -> Minecraft.getInstance().setScreen(
-                    new ModReviewScreen(payload, current.address(), current.serverData(), current.parent()));
+            Runnable setup = setupAction(manifestOpt.get(), current.parent(), current.address(), current.serverData());
+            if (setup == null) return PortDiscovery.READY;
+            afterDisconnect = setup;
             return PortDiscovery.NEEDS_SETUP;
         });
+    }
+
+    /**
+     * What to show before joining a server with this manifest, or null if this client already has
+     * everything it needs. Shared by the pre-join check and the in-login check.
+     */
+    public static Runnable setupAction(ManifestPayload payload, Screen parent, ServerAddress address, ServerData serverData) {
+        String host = address.getHost();
+        int gamePort = address.getPort();
+        ServerInstallRecord record = ServerInstallRecord.forServer(host, gamePort);
+        if (record.isSatisfied(payload)) {
+            ModStashManager.ReconcileResult result = new ModStashManager()
+                    .reconcile(record.key(), record.ownedJarFilenames());
+            if (!result.changed()) return null;
+            return () -> Minecraft.getInstance().setScreen(
+                    new ModSwitchScreen(payload.serverName(), parent, address, serverData));
+        }
+        int required = (int) payload.mods().stream().filter(ModEntry::required).count();
+        LOGGER.info("Manifest requires setup ({} required mod(s))", required);
+        return () -> Minecraft.getInstance().setScreen(new ModReviewScreen(payload, address, serverData, parent));
     }
 
     public static void onLoginDisconnect() {

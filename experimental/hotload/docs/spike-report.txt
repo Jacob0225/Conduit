@@ -1,0 +1,18 @@
+INFO 65 of 82 mixin targets already loaded at the title screen
+PASS redefined loaded SplashRenderer via hidden nestmate companion (244 ms incl. agent attach)
+INFO load+register took 83 ms
+PASS block registered
+PASS item registered
+PASS block state has a network id
+PASS block item maps to block
+PASS block emits light 15
+PASS mod in ModList
+PASS block registry frozen again
+INFO resource reload took 3296 ms
+PASS block model baked (not the missing model)
+PASS item model baked (not the missing model)
+PASS translation loaded
+INFO joined after 2818 ms
+PASS joined a server that runs the mod (registry sync accepted)
+PASS server placed Glow Cubes the client can see (9 of 9)
+PASS server gave the hot-loaded item

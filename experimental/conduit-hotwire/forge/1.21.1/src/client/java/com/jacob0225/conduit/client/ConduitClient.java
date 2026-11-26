@@ -35,7 +35,10 @@ public final class ConduitClient {
         context.registerExtensionPoint(ConfigScreenHandler.ConfigScreenFactory.class,
                 () -> new ConfigScreenHandler.ConfigScreenFactory((mc, parent) -> new ConduitSettingsScreen(parent)));
         MinecraftForge.EVENT_BUS.addListener((TickEvent.ClientTickEvent event) -> {
-            if (event.phase == TickEvent.Phase.END) ConduitJoinInterceptor.onClientTick();
+            if (event.phase == TickEvent.Phase.END) {
+                ConduitJoinInterceptor.onClientTick();
+                com.jacob0225.conduit.client.network.ConduitPreflight.onClientTick();
+            }
         });
         MinecraftForge.EVENT_BUS.addListener(ConduitClient::onScreenInit);
         MinecraftForge.EVENT_BUS.addListener(ConduitClient::onScreenRender);

@@ -1,0 +1,18 @@
+modLoader="javafml"
+loaderVersion="[1,)"
+license="MIT"
+
+[[mods]]
+modId="hotmixin"
+version="1.0.0"
+displayName="Hot Mixin"
+description='''Test fixture for Conduit's mixin splitter.'''
+
+[[mixins]]
+config="hotmixin.mixins.json"
+
+[[dependencies.hotmixin]]
+modId="neoforge"
+type="required"
+versionRange="[21.1,)"
+side="BOTH"

@@ -41,6 +41,7 @@ public final class ConduitServerRuntime {
         advertisedHttpPort = config.httpPort();
         advertisedPublicBaseUrl = config.publicBaseUrl();
         ConduitStatusMarker.setAvailable(true);
+        ConduitStatusMarker.setEndpoint(advertisedHttpPort, advertisedPublicBaseUrl);
     }
 
     public void stop() {
@@ -51,6 +52,7 @@ public final class ConduitServerRuntime {
         advertisedHttpPort = -1;
         advertisedPublicBaseUrl = "";
         ConduitStatusMarker.setAvailable(false);
+        ConduitStatusMarker.setEndpoint(-1, "");
     }
 
     public int advertisedHttpPort() {

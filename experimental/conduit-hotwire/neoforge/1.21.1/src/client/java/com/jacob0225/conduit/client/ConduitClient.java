@@ -27,11 +27,16 @@ public final class ConduitClient {
     private ConduitClient() {}
     public static void initialize(ModContainer modContainer) {
         ConduitUi.applyTheme(ClientConfig.load().theme());
+        dev.conduit.hotload.LiveLoad.prepare(); // find a Java that can attach, before it's needed
+        com.jacob0225.conduit.client.devtest.AutoJoinTest.installIfRequested(); // dev-only, needs -Dconduit.autotest
         verifyInstallRecords();
         IConfigScreenFactory configScreenFactory =
                 (container, parent) -> new ConduitSettingsScreen(parent);
         modContainer.registerExtensionPoint(IConfigScreenFactory.class, configScreenFactory);
-        NeoForge.EVENT_BUS.addListener((ClientTickEvent.Post event) -> ConduitJoinInterceptor.onClientTick());
+        NeoForge.EVENT_BUS.addListener((ClientTickEvent.Post event) -> {
+            ConduitJoinInterceptor.onClientTick();
+            com.jacob0225.conduit.client.network.ConduitPreflight.onClientTick();
+        });
         NeoForge.EVENT_BUS.addListener(ConduitClient::onScreenInit);
         NeoForge.EVENT_BUS.addListener(ConduitClient::onScreenRender);
         LOGGER.info("Conduit NeoForge client ready");

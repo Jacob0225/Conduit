@@ -1,6 +1,7 @@
 package com.jacob0225.conduit.client.mixin;
 
 import com.jacob0225.conduit.client.network.ConduitJoinInterceptor;
+import com.jacob0225.conduit.client.network.ConduitPreflight;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.ConnectScreen;
 import net.minecraft.client.gui.screens.Screen;
@@ -25,17 +26,15 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * <p>Both the server list "Join" button and Direct Connect funnel through
  * {@code startConnecting}, so one intercept covers every join path.
  *
- * <p><b>Recursion.</b> After a successful install, {@link ModReviewScreen}
- * re-issues a join (which re-enters this mixin). To avoid re-checking and
- * looping, {@link ConduitJoinInterceptor#bypassNextCheck()} is set first; this
- * mixin consumes it via {@link ConduitJoinInterceptor#shouldBypass()}.
+ * <p>Before that, {@link ConduitPreflight} checks the server's manifest, since
+ * mods with required network channels end the join before the in-login check.
  */
 @Mixin(ConnectScreen.class)
 public class MixinConnectScreen {
 
     private static final Logger LOGGER = LoggerFactory.getLogger("Conduit/Mixin");
 
-    @Inject(method = "startConnecting", at = @At("HEAD"))
+    @Inject(method = "startConnecting", at = @At("HEAD"), cancellable = true)
     private static void conduit$interceptJoin(
             Screen parent,
             Minecraft mc,
@@ -48,6 +47,11 @@ public class MixinConnectScreen {
         LOGGER.info("⟶ startConnecting fired: {}:{} (direct={}, serverData={})",
                 address.getHost(), address.getPort(), direct,
                 serverData == null ? "null" : "present");
+
+        if (ConduitPreflight.intercept(parent, mc, address, serverData)) {
+            ci.cancel(); // checking the server's mods first; it joins (or shows setup) when done
+            return;
+        }
 
         ConduitJoinInterceptor.rememberConnection(parent, address, serverData);
     }

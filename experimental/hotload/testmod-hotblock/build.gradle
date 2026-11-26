@@ -1,0 +1,20 @@
+// Test fixture for the Conduit hot-load spike: a tiny NeoForge 1.21.1 mod with one block.
+plugins {
+    id 'java-library'
+    id 'net.neoforged.moddev' version '2.0.142'
+}
+
+version = '1.0.0'
+base { archivesName = 'hotblock' }
+java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+
+neoForge {
+    version = project.neo_version
+    runs {
+        // Dedicated server for the spike's join test (offline mode, port 25680; see run/server.properties).
+        server { server(); programArgument '--nogui' }
+    }
+    mods { hotblock { sourceSet sourceSets.main } }
+}
+
+tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8'; options.release = 21 }

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 2,
+  "serverName": "Conduit live-load test",
+  "mods": [
+    { "slug": "create", "required": true },
+    { "slug": "copycats", "required": true },
+    { "slug": "create-deco", "required": true },
+    { "slug": "create-connected", "required": true },
+    { "slug": "bellsandwhistles", "required": true }
+  ]
+}

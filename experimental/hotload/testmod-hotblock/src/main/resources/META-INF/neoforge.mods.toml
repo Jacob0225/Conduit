@@ -1,0 +1,15 @@
+modLoader="javafml"
+loaderVersion="[1,)"
+license="MIT"
+
+[[mods]]
+modId="hotblock"
+version="1.0.0"
+displayName="Hot Block"
+description='''Test fixture for Conduit's hot-load spike.'''
+
+[[dependencies.hotblock]]
+modId="neoforge"
+type="required"
+versionRange="[21.1,)"
+side="BOTH"

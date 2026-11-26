@@ -20,7 +20,9 @@ neoForge {
     version = project.neo_version
     runs {
         client { client() }
-        server { server(); programArgument '--nogui' }
+        server { server(); programArgument '--nogui'; gameDirectory = project.file('run-server') }
+        // Dev only: -Dconduit.autotest=host:port joins, downloads, loads live and reports (see AutoJoinTest).
+        client { systemProperty 'conduit.autotest', project.findProperty('autotest') ?: '' }
     }
     mods { conduit { sourceSet sourceSets.main } }
 }

@@ -54,9 +54,14 @@ public class ConduitHttpServer {
     public void start() {
         LOGGER.info("Starting HTTP manifest server on {}:{} ...", config.bindAddress(), config.httpPort());
         try {
-            // back-log of 50 is plenty for a mod-sync endpoint; bind to 0.0.0.0
-            // so clients can reach it the same way they reach the game server.
-            server = HttpServer.create(new InetSocketAddress(config.bindAddress(), config.httpPort()), 50);
+            // back-log of 50 is plenty for a mod-sync endpoint. "0.0.0.0" (the default) means
+            // every address, like the game port: Java binds the literal to IPv4 only, so use the
+            // true wildcard, which also takes IPv6 clients.
+            String bind = config.bindAddress();
+            InetSocketAddress address = bind.isBlank() || bind.equals("0.0.0.0") || bind.equals("::")
+                    ? new InetSocketAddress(config.httpPort())
+                    : new InetSocketAddress(bind, config.httpPort());
+            server = HttpServer.create(address, 50);
             server.createContext("/manifest.json", new ManifestHandler());
             if (config.diagnosticsEnabled()) {
                 server.createContext("/", new RootHandler());

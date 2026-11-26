@@ -1,0 +1,28 @@
+INFO 65 of 82 mixin targets already loaded at the title screen
+INFO hotblock: load+register took 30 ms
+INFO hotmixin: load+register took 820 ms
+INFO mixins: 3 loaded targets [net.minecraft.client.gui.components.SplashRenderer, net.minecraft.client.Minecraft, net.minecraft.client.gui.screens.TitleScreen], applied on load later: [net.minecraft.client.gui.screens.WinScreen]
+INFO split: 3 bodies changed, 9 methods moved, 2 fields moved, 2 interfaces, 1 static inits []
+PASS block registered
+PASS item registered
+PASS block state has a network id
+PASS block item maps to block
+PASS block emits light 15
+PASS mod in ModList
+PASS block registry frozen again
+INFO resource reload took 2463 ms
+PASS block model baked (not the missing model)
+PASS item model baked (not the missing model)
+PASS translation loaded
+PASS @Inject handler + @Unique field on loaded Minecraft (ticks counted: 107)
+PASS @Unique static field with initializer (107)
+PASS lambda inside a moved handler (107 runs)
+PASS instanceof an interface added to a loaded class
+PASS @Accessor getter + setter on a private field (read back 7)
+PASS @Invoker on a private method (true, expected true off a local world)
+PASS @Inject at TAIL of loaded TitleScreen.render (167 frames)
+PASS mixin on a class loaded later (normal path)
+INFO joined after 2510 ms
+PASS joined a server that runs the mod (registry sync accepted)
+PASS server placed Glow Cubes the client can see (9 of 9)
+PASS server gave the hot-loaded item

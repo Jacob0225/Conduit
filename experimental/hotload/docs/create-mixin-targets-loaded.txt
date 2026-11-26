@@ -1,0 +1,83 @@
+65 of 82 mixin targets already loaded at the title screen
+LOADED  com.mojang.blaze3d.platform.GlStateManager
+LOADED  com.mojang.blaze3d.systems.RenderSystem
+LOADED  com.mojang.blaze3d.vertex.BufferBuilder
+LOADED  com.mojang.blaze3d.vertex.PoseStack
+LOADED  net.minecraft.SystemReport
+LOADED  net.minecraft.client.Camera
+LOADED  net.minecraft.client.DeltaTracker$Timer
+LOADED  net.minecraft.client.Minecraft
+LOADED  net.minecraft.client.MouseHandler
+LOADED  net.minecraft.client.Options
+LOADED  net.minecraft.client.gui.Font
+LOADED  net.minecraft.client.gui.Gui
+LOADED  net.minecraft.client.gui.screens.Screen
+LOADED  net.minecraft.client.model.AgeableListModel
+LOADED  net.minecraft.client.model.HumanoidModel
+LOADED  net.minecraft.client.model.geom.ModelPart
+not yet net.minecraft.client.multiplayer.ClientChunkCache
+not yet net.minecraft.client.multiplayer.ClientPacketListener
+LOADED  net.minecraft.client.particle.ParticleEngine
+LOADED  net.minecraft.client.player.AbstractClientPlayer
+LOADED  net.minecraft.client.player.LocalPlayer
+LOADED  net.minecraft.client.renderer.GameRenderer
+LOADED  net.minecraft.client.renderer.LevelRenderer
+LOADED  net.minecraft.client.renderer.RenderType
+LOADED  net.minecraft.client.renderer.block.ModelBlockRenderer
+not yet net.minecraft.client.renderer.chunk.SectionCompiler
+LOADED  net.minecraft.client.renderer.entity.EntityRenderDispatcher
+LOADED  net.minecraft.client.renderer.entity.ItemRenderer
+LOADED  net.minecraft.client.renderer.entity.layers.HumanoidArmorLayer
+LOADED  net.minecraft.client.renderer.entity.player.PlayerRenderer
+LOADED  net.minecraft.core.MappedRegistry
+LOADED  net.minecraft.core.dispenser.ProjectileDispenseBehavior
+LOADED  net.minecraft.core.registries.BuiltInRegistries
+not yet net.minecraft.data.loot.BlockLootSubProvider
+not yet net.minecraft.data.models.ItemModelGenerators
+not yet net.minecraft.gametest.framework.GameTestHelper
+LOADED  net.minecraft.nbt.NbtAccounter
+LOADED  net.minecraft.server.MinecraftServer
+not yet net.minecraft.server.level.BlockDestructionProgress
+LOADED  net.minecraft.server.level.ServerLevel
+LOADED  net.minecraft.util.datafix.fixes.BlockPosFormatAndRenamesFix
+LOADED  net.minecraft.util.datafix.fixes.ItemStackComponentizationFix
+LOADED  net.minecraft.util.datafix.schemas.V1460
+LOADED  net.minecraft.world.effect.MobEffectInstance
+LOADED  net.minecraft.world.entity.Entity
+LOADED  net.minecraft.world.entity.EntityType
+LOADED  net.minecraft.world.entity.LivingEntity
+LOADED  net.minecraft.world.entity.Mob
+LOADED  net.minecraft.world.entity.decoration.ItemFrame
+LOADED  net.minecraft.world.entity.item.FallingBlockEntity
+LOADED  net.minecraft.world.entity.player.Player
+not yet net.minecraft.world.entity.projectile.ProjectileUtil
+LOADED  net.minecraft.world.entity.vehicle.MinecartFurnace
+LOADED  net.minecraft.world.inventory.SmithingMenu
+LOADED  net.minecraft.world.item.BlockItem
+LOADED  net.minecraft.world.item.ItemStack
+not yet net.minecraft.world.item.alchemy.PotionBrewing
+LOADED  net.minecraft.world.item.armortrim.ArmorTrim
+LOADED  net.minecraft.world.item.context.UseOnContext
+LOADED  net.minecraft.world.item.crafting.ShapedRecipe
+LOADED  net.minecraft.world.level.Level
+not yet net.minecraft.world.level.biome.BiomeManager
+LOADED  net.minecraft.world.level.block.BeehiveBlock
+LOADED  net.minecraft.world.level.block.Block
+LOADED  net.minecraft.world.level.block.ConcretePowderBlock
+LOADED  net.minecraft.world.level.block.CropBlock
+LOADED  net.minecraft.world.level.block.DispenserBlock
+LOADED  net.minecraft.world.level.block.entity.BlockEntity
+LOADED  net.minecraft.world.level.block.entity.BlockEntityType
+LOADED  net.minecraft.world.level.block.state.BlockBehaviour
+LOADED  net.minecraft.world.level.block.state.StateHolder
+LOADED  net.minecraft.world.level.chunk.LevelChunk
+not yet net.minecraft.world.level.lighting.LayerLightSectionStorage
+not yet net.minecraft.world.level.lighting.LightEngine
+not yet net.minecraft.world.level.lighting.SkyLightSectionStorage
+not yet net.minecraft.world.level.lighting.SkyLightSectionStorage.SkyDataLayerStorageMap
+LOADED  net.minecraft.world.level.material.FlowingFluid
+LOADED  net.minecraft.world.level.saveddata.maps.MapItemSavedData
+LOADED  net.minecraft.world.level.storage.loot.functions.EnchantedCountIncreaseFunction
+not yet net.neoforged.neoforge.fluids.FluidInteractionRegistry
+not yet net.neoforged.neoforge.items.ItemStackHandler
+not yet xaero.map.gui.GuiMap

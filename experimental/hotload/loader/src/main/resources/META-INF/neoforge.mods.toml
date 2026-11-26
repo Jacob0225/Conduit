@@ -1,0 +1,15 @@
+modLoader="javafml"
+loaderVersion="[1,)"
+license="All Rights Reserved"
+
+[[mods]]
+modId="conduithotload"
+version="0.1.0"
+displayName="Conduit Hot-Load Spike"
+description='''Feasibility spike: load a mod into a running NeoForge game.'''
+
+[[dependencies.conduithotload]]
+modId="neoforge"
+type="required"
+versionRange="[21.1,)"
+side="BOTH"

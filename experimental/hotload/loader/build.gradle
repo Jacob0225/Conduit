@@ -1,0 +1,29 @@
+// Conduit hot-load spike: loads a NeoForge 1.21.1 mod jar into an already running game.
+plugins {
+    id 'java-library'
+    id 'net.neoforged.moddev' version '2.0.142'
+}
+
+version = '0.1.0'
+base { archivesName = 'conduit-hotload-spike' }
+java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+
+// -PhotloadJars=a.jar|b.jar overrides the default test fixtures.
+def testJar = project.findProperty('hotloadJars') ?: (file('../testmod-hotblock/build/libs/hotblock-1.0.0.jar').absolutePath + '|' +
+        file('../testmod-hotmixin/build/libs/hotmixin-1.0.0.jar').absolutePath)
+
+neoForge {
+    version = project.neo_version
+    runs {
+        client {
+            client()
+            // Spike harness: on the title screen, hot-load this jar, verify, screenshot, quit.
+            systemProperty 'conduit.hotload.test', testJar
+            systemProperty 'conduit.hotload.join', 'localhost:25680'
+            systemProperty 'conduit.hotload.targets', file('../tools/create-mixin-targets.txt').absolutePath
+        }
+    }
+    mods { conduithotload { sourceSet sourceSets.main } }
+}
+
+tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8'; options.release = 21 }
